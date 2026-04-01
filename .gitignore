@@ -1,0 +1,19 @@
+# OS / IDE
+.DS_Store
+.vscode/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local artifacts / outputs
+reports/
+survey_results.db
+generated_exports/
+~$*.xlsx
+
+# Potentially sensitive source exports
+Копия*.xlsx
