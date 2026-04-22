@@ -9,6 +9,7 @@ import pandas as pd
 from openpyxl.styles import Alignment
 
 from report_first_management import build_report_dataframe as build_report_1
+from report_four_reconciliation import build_report_dataframe as build_report_4
 from report_second_requests import build_report_dataframe as build_report_2
 from report_third_closure import build_report_dataframe as build_report_3
 
@@ -114,6 +115,7 @@ def main() -> None:
     report_1_df = build_report_1(str(db_path), employees_csv=args.employees_csv)
     report_2_df = build_report_2(str(db_path))
     report_3_df = build_report_3(str(db_path))
+    report_4_df = build_report_4(str(db_path))
 
     if args.output:
         output_path = Path(args.output)
@@ -145,11 +147,19 @@ def main() -> None:
             subtitle=f"Дата подготовки: {prepared_label}",
             report_df=report_3_df,
         )
+        write_sheet(
+            writer,
+            sheet_name="Отчет 4",
+            title="Отчет 4: сверка заявившихся и предоставивших фактическое время",
+            subtitle=f"Дата подготовки: {prepared_label}",
+            report_df=report_4_df,
+        )
 
     print(f"Дата подготовки: {prepared_label}")
     print(f"Отчет 1 строк: {len(report_1_df)}")
     print(f"Отчет 2 строк: {len(report_2_df)}")
     print(f"Отчет 3 строк: {len(report_3_df)}")
+    print(f"Отчет 4 строк: {len(report_4_df)}")
     print(f"Файл: {output_path}")
 
 

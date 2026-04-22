@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Work on Holiday - Web UI</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; }
+    h1 { margin-bottom: 8px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
+    .card { border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; background: #fff; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .stats { display: flex; gap: 14px; margin: 8px 0 16px; }
+    .chip { background: #f3f4f6; padding: 6px 10px; border-radius: 999px; font-size: 13px; }
+    input[type="date"], input[type="file"], button { padding: 8px 10px; }
+    button { cursor: pointer; border: 1px solid #374151; background: #111827; color: #fff; border-radius: 8px; }
+    button.secondary { background: #fff; color: #111827; }
+    .msg { padding: 10px 12px; border-radius: 8px; margin: 12px 0 16px; }
+    .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
+    .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+    .msg.info { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 8px 6px; }
+    a { color: #1d4ed8; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <h1>Work on Holiday - Web UI</h1>
+  <div class="stats">
+    <div class="chip">Записей в БД: {{ stats.responses }}</div>
+    <div class="chip">Обработанных файлов: {{ stats.processed_files }}</div>
+  </div>
+
+  {% if msg %}
+    <div class="msg {{ level }}">{{ msg }}</div>
+  {% endif %}
+
+  <div class="grid">
+    <div class="card">
+      <h3>1. Загрузка новой выгрузки и ETL</h3>
+      <form action="/upload" method="post" enctype="multipart/form-data">
+        <div class="row">
+          <input type="file" name="file" required />
+          <button type="submit">Загрузить и обработать</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>2. Общий файл отчетов</h3>
+      <form action="/generate/full" method="post">
+        <button type="submit">Сформировать Отчеты выхода выходные</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>3. Отчет 3 (фактически отработанное время)</h3>
+      <form action="/generate/actual" method="post">
+        <div class="row">
+          <label>С:</label>
+          <input type="date" name="date_from" value="{{ default_from }}" required />
+          <label>По:</label>
+          <input type="date" name="date_to" value="{{ default_to }}" required />
+          <button type="submit" class="secondary">Сформировать</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>4. Отчет 4 (сверка заявившихся/факта)</h3>
+      <form action="/generate/reconciliation" method="post">
+        <div class="row">
+          <label>С:</label>
+          <input type="date" name="date_from" value="{{ default_from }}" required />
+          <label>По:</label>
+          <input type="date" name="date_to" value="{{ default_to }}" required />
+          <button type="submit" class="secondary">Сформировать</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 16px;">
+    <h3>Готовые файлы отчетов</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Файл</th>
+          <th>Изменен</th>
+          <th>Действие</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in reports %}
+          <tr>
+            <td>{{ item.name }}</td>
+            <td>{{ item.modified }}</td>
+            <td><a href="/download/{{ item.name }}">Скачать</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>
