@@ -13,6 +13,21 @@ STATUS_LABELS = {
 def ensure_app_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS app_employee_directory (
+            full_name_key TEXT PRIMARY KEY,
+            full_name TEXT NOT NULL,
+            work_email TEXT,
+            local_phone TEXT,
+            mobile_phone TEXT,
+            position_short_name TEXT,
+            grade_num INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS app_request_state (
             request_uid TEXT PRIMARY KEY,
             response_id INTEGER NOT NULL,

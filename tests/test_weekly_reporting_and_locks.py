@@ -10,7 +10,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.app_request_state import ensure_app_tables
-from src import report_first_management, report_second_requests, report_third_closure, web_ui
+from src import generate_users, init_db, report_first_management, report_second_requests, report_third_closure, web_ui
 
 
 SUPERUSER_ENV = {
@@ -85,24 +85,11 @@ CREATE TABLE response_systems (
 );
 """
 
-INGESTION_SCHEMA = """
-CREATE TABLE ingestion_files (
-    file_path TEXT,
-    file_name TEXT,
-    file_hash TEXT,
-    rows_in_file INTEGER,
-    rows_inserted INTEGER,
-    file_mtime REAL,
-    processed_at TEXT
-);
-"""
-
 
 def init_test_db(db_path: Path) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.execute(SURVEY_SCHEMA)
         conn.execute(SYSTEMS_SCHEMA)
-        conn.execute(INGESTION_SCHEMA)
         ensure_app_tables(conn)
         conn.commit()
 
@@ -143,6 +130,60 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.tmpdir.cleanup()
+
+    def test_init_db_creates_web_only_schema_without_ingestion_table(self) -> None:
+        initialized_db = Path(self.tmpdir.name) / "initialized.sqlite3"
+
+        init_db.initialize_database(initialized_db)
+
+        with sqlite3.connect(initialized_db) as conn:
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            }
+
+        self.assertIn("survey_responses", tables)
+        self.assertIn("response_systems", tables)
+        self.assertIn("app_employee_directory", tables)
+        self.assertIn("app_employee_profile", tables)
+        self.assertNotIn("ingestion_files", tables)
+
+    def test_generated_users_can_login_without_seed_requests(self) -> None:
+        initialized_db = Path(self.tmpdir.name) / "generated_users.sqlite3"
+        init_db.initialize_database(initialized_db)
+
+        created_users = generate_users.generate_users(
+            initialized_db,
+            count=3,
+            seed=11,
+            overwrite=True,
+        )
+
+        self.assertEqual(3, len(created_users))
+        first_user = created_users[0]
+
+        with patch.object(web_ui, "DB_PATH", initialized_db):
+            client = TestClient(web_ui.app)
+            login_response = client.post(
+                "/employee/login",
+                data={"full_name": first_user.full_name},
+            )
+
+        self.assertEqual(200, login_response.status_code)
+        self.assertIn("Токен сотрудника создан", login_response.text)
+
+        with sqlite3.connect(initialized_db) as conn:
+            requests_count = conn.execute("SELECT COUNT(*) FROM survey_responses").fetchone()[0]
+            profile = conn.execute(
+                "SELECT grade_12_plus FROM app_employee_profile WHERE full_name_key = ?",
+                (first_user.full_name_key,),
+            ).fetchone()
+
+        self.assertEqual(0, requests_count)
+        self.assertIsNotNone(profile)
+        self.assertEqual(1 if first_user.grade_12_plus else 0, profile[0])
 
     def test_report_week_filter_uses_corrected_planned_date(self) -> None:
         insert_planned_request(
@@ -393,7 +434,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn("среда", employee_response.text.lower())
         self.assertIn("09:00 - 18:00", employee_response.text)
 
-    def test_upload_route_is_disabled(self) -> None:
+    def test_upload_route_is_removed_with_etl(self) -> None:
         with patch.object(web_ui, "DB_PATH", self.db_path):
             client = TestClient(web_ui.app)
             response = client.post(
@@ -402,8 +443,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 follow_redirects=False,
             )
 
-        self.assertEqual(303, response.status_code)
-        self.assertIn("отключена", unquote(response.headers["location"]).lower())
+        self.assertEqual(404, response.status_code)
 
     def test_employee_first_login_issues_token_and_second_login_requires_token(self) -> None:
         insert_planned_request(

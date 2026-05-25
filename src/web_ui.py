@@ -12,16 +12,16 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 try:
     from src.app_request_state import STATUS_LABELS, VALID_STATUSES, ensure_app_tables
-    from src.etl_processor import append_delta_from_file
+    from src.db_schema import ensure_core_tables
 except ModuleNotFoundError:
     from app_request_state import STATUS_LABELS, VALID_STATUSES, ensure_app_tables
-    from etl_processor import append_delta_from_file
+    from db_schema import ensure_core_tables
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SRC_DIR = BASE_DIR / "src"
@@ -52,6 +52,7 @@ def get_db_connection() -> sqlite3.Connection:
 
 def ensure_app_tables_for_app() -> None:
     with get_db_connection() as conn:
+        ensure_core_tables(conn)
         ensure_app_tables(conn)
         conn.commit()
 
@@ -100,18 +101,20 @@ def get_current_week(today: date) -> tuple[date, date]:
 
 def read_db_stats() -> dict[str, Any]:
     if not DB_PATH.exists():
-        return {"responses": 0, "processed_files": 0, "managed_requests": 0, "locked_requests": 0, "period_locks": 0}
+        return {"responses": 0, "employees": 0, "managed_requests": 0, "locked_requests": 0, "period_locks": 0}
 
     with get_db_connection() as conn:
+        ensure_core_tables(conn)
+        ensure_app_tables(conn)
         responses = conn.execute("SELECT COUNT(*) FROM survey_responses").fetchone()[0]
-        processed_files = conn.execute("SELECT COUNT(*) FROM ingestion_files").fetchone()[0]
+        employees = conn.execute("SELECT COUNT(*) FROM app_employee_directory").fetchone()[0]
         managed_requests = conn.execute("SELECT COUNT(*) FROM app_request_state").fetchone()[0]
         locked_requests = conn.execute("SELECT COUNT(*) FROM app_report_lock").fetchone()[0]
         period_locks = conn.execute("SELECT COUNT(*) FROM app_period_lock").fetchone()[0]
 
     return {
         "responses": int(responses),
-        "processed_files": int(processed_files),
+        "employees": int(employees),
         "managed_requests": int(managed_requests),
         "locked_requests": int(locked_requests),
         "period_locks": int(period_locks),
@@ -255,16 +258,25 @@ def resolve_employee_by_name(conn: sqlite3.Connection, full_name: str) -> dict[s
         return None
     row = conn.execute(
         """
-        SELECT DISTINCT
-            r.full_name_key,
-            COALESCE(r.full_name_normalized, r.full_name) AS full_name
-        FROM survey_responses r
-        WHERE r.request_type = 'Подать заявку'
-          AND r.full_name_key = ?
-        ORDER BY full_name
+        WITH employees AS (
+            SELECT full_name_key, full_name, 0 AS source_order
+            FROM app_employee_directory
+            WHERE full_name_key = ?
+            UNION ALL
+            SELECT DISTINCT
+                r.full_name_key,
+                COALESCE(r.full_name_normalized, r.full_name) AS full_name,
+                1 AS source_order
+            FROM survey_responses r
+            WHERE r.request_type = 'Подать заявку'
+              AND r.full_name_key = ?
+        )
+        SELECT full_name_key, full_name
+        FROM employees
+        ORDER BY source_order, full_name
         LIMIT 1;
         """,
-        (normalized,),
+        (normalized, normalized),
     ).fetchone()
     if not row:
         return None
@@ -435,25 +447,13 @@ def authenticate_employee_by_token(request: Request) -> dict[str, Any] | None:
         token_row = get_employee_token_record_by_hash(conn, hash_employee_token(raw_token))
         if not token_row:
             return None
-        employee_row = conn.execute(
-            """
-            SELECT DISTINCT
-                r.full_name_key,
-                COALESCE(r.full_name_normalized, r.full_name) AS full_name
-            FROM survey_responses r
-            WHERE r.request_type = 'Подать заявку'
-              AND r.full_name_key = ?
-            ORDER BY full_name
-            LIMIT 1;
-            """,
-            (token_row["full_name_key"],),
-        ).fetchone()
+        employee_name = get_employee_display_name(conn, token_row["full_name_key"])
         profile = get_employee_profile(conn, token_row["full_name_key"])
-    if not employee_row or not is_employee_profile_active(profile):
+    if not employee_name or not is_employee_profile_active(profile):
         return None
     return {
-        "employee_key": employee_row["full_name_key"],
-        "full_name": employee_row["full_name"],
+        "employee_key": token_row["full_name_key"],
+        "full_name": employee_name,
         "is_admin": int(profile.get("is_admin") or 0),
         "is_superuser": int(profile.get("is_superuser") or 0),
         "employee_status": profile.get("employee_status") or "active",
@@ -628,14 +628,26 @@ def get_period_locks(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 def get_employee_display_name(conn: sqlite3.Connection, employee_key: str) -> str | None:
     row = conn.execute(
         """
-        SELECT COALESCE(full_name_normalized, full_name) AS full_name
-        FROM survey_responses
-        WHERE request_type = 'Подать заявку'
-          AND full_name_key = ?
-        ORDER BY response_id DESC
+        WITH employees AS (
+            SELECT full_name_key, full_name, 0 AS source_order, updated_at AS sort_key
+            FROM app_employee_directory
+            WHERE full_name_key = ?
+            UNION ALL
+            SELECT
+                full_name_key,
+                COALESCE(full_name_normalized, full_name) AS full_name,
+                1 AS source_order,
+                CAST(response_id AS TEXT) AS sort_key
+            FROM survey_responses
+            WHERE request_type = 'Подать заявку'
+              AND full_name_key = ?
+        )
+        SELECT full_name
+        FROM employees
+        ORDER BY source_order, sort_key DESC
         LIMIT 1;
         """,
-        (employee_key,),
+        (employee_key, employee_key),
     ).fetchone()
     return row["full_name"] if row else None
 
@@ -650,14 +662,23 @@ def get_employee_list() -> list[dict[str, str]]:
         return []
 
     with get_db_connection() as conn:
+        ensure_core_tables(conn)
+        ensure_app_tables(conn)
         rows = conn.execute(
             """
-            SELECT DISTINCT
-                r.full_name_key,
-                COALESCE(r.full_name_normalized, r.full_name) AS full_name
-            FROM survey_responses r
-            WHERE r.request_type = 'Подать заявку'
-              AND r.full_name_key IS NOT NULL
+            WITH employees AS (
+                SELECT full_name_key, full_name
+                FROM app_employee_directory
+                UNION
+                SELECT DISTINCT
+                    r.full_name_key,
+                    COALESCE(r.full_name_normalized, r.full_name) AS full_name
+                FROM survey_responses r
+                WHERE r.request_type = 'Подать заявку'
+                  AND r.full_name_key IS NOT NULL
+            )
+            SELECT full_name_key, full_name
+            FROM employees
             ORDER BY full_name;
             """
         ).fetchall()
@@ -675,9 +696,21 @@ def get_admin_test_data_employees() -> list[dict[str, Any]]:
 
 def get_admin_employees_overview() -> list[dict[str, Any]]:
     with get_db_connection() as conn:
+        ensure_core_tables(conn)
         ensure_app_tables(conn)
         rows = conn.execute(
             """
+            WITH employees AS (
+                SELECT full_name_key, full_name
+                FROM app_employee_directory
+                UNION
+                SELECT DISTINCT
+                    r.full_name_key,
+                    COALESCE(r.full_name_normalized, r.full_name) AS full_name
+                FROM survey_responses r
+                WHERE r.request_type = 'Подать заявку'
+                  AND r.full_name_key IS NOT NULL
+            )
             SELECT
                 e.full_name_key AS employee_key,
                 e.full_name,
@@ -695,14 +728,7 @@ def get_admin_employees_overview() -> list[dict[str, Any]]:
                 profile.restored_at,
                 profile.updated_by,
                 profile.updated_at AS profile_updated_at
-            FROM (
-                SELECT DISTINCT
-                    r.full_name_key,
-                    COALESCE(r.full_name_normalized, r.full_name) AS full_name
-                FROM survey_responses r
-                WHERE r.request_type = 'Подать заявку'
-                  AND r.full_name_key IS NOT NULL
-            ) e
+            FROM employees e
             LEFT JOIN survey_responses r
                 ON r.full_name_key = e.full_name_key
                AND r.request_type = 'Подать заявку'
@@ -1541,9 +1567,14 @@ def employee_login(
         return response
 
     issued_token = generate_employee_token()
+    issued_grade_12_plus = grade_12_plus_flag
     with get_db_connection() as conn:
         ensure_app_tables(conn)
-        upsert_employee_grade_12_plus(conn, employee["employee_key"], grade_12_plus_flag)
+        current_profile = get_employee_profile(conn, employee["employee_key"])
+        if current_profile["updated_at"] is None:
+            upsert_employee_grade_12_plus(conn, employee["employee_key"], grade_12_plus_flag)
+        else:
+            issued_grade_12_plus = bool(current_profile["grade_12_plus"])
         upsert_employee_token(conn, employee["employee_key"], issued_token, reissued=False)
         conn.commit()
 
@@ -1554,7 +1585,7 @@ def employee_login(
             "title": "Токен сотрудника создан",
             "token": issued_token,
             "employee_name": employee["full_name"],
-            "grade_12_plus": grade_12_plus_flag,
+            "grade_12_plus": issued_grade_12_plus,
             "return_url": "/employee",
             "is_admin": False,
         },
@@ -2054,15 +2085,6 @@ def admin_create_period_lock(
         conn.commit()
     label = "приема заявок" if lock_type == "planning" else "ввода факта"
     return redirect_with_message("/admin", f"Период {label} закрыт", "success")
-
-
-@app.post("/upload")
-async def upload_and_ingest(request: Request, file: UploadFile = File(...)) -> RedirectResponse:
-    del request, file
-    return RedirectResponse(
-        url="/?msg=Загрузка выгрузок через Web UI отключена. Работа ведется через заявки в системе.&level=info",
-        status_code=303,
-    )
 
 
 @app.post("/generate/full")
