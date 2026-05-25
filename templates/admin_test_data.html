@@ -3,41 +3,41 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Кабинет администратора</title>
+  <title>Администратор - Тестовые данные</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; background: #f8fafc; }
-    h1 { margin-bottom: 8px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
-    .card { border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; background: #fff; }
-    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .stats { display: flex; gap: 14px; margin: 8px 0 16px; flex-wrap: wrap; }
-    .chip { background: #f3f4f6; padding: 6px 10px; border-radius: 999px; font-size: 13px; }
-    input[type="text"], select, button { padding: 8px 10px; }
-    button { cursor: pointer; border: 1px solid #374151; background: #111827; color: #fff; border-radius: 8px; }
-    button.secondary { background: #fff; color: #111827; }
-    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+    h1 { margin: 0; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
     .hamburger-menu { position: relative; }
     .hamburger-menu summary { list-style: none; cursor: pointer; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; padding: 8px 12px; font-size: 20px; line-height: 1; user-select: none; }
     .hamburger-menu summary::-webkit-details-marker { display: none; }
-    .hamburger-panel { position: absolute; right: 0; top: calc(100% + 8px); min-width: 240px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px; box-shadow: 0 14px 32px rgba(15, 23, 42, .16); padding: 10px; z-index: 20; display: grid; gap: 8px; }
+    .hamburger-panel { position: absolute; right: 0; top: calc(100% + 8px); min-width: 260px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px; box-shadow: 0 14px 32px rgba(15, 23, 42, .16); padding: 10px; z-index: 20; display: grid; gap: 8px; }
     .hamburger-link { display: block; padding: 8px 10px; border-radius: 8px; color: #1f2937; text-decoration: none; }
-    .hamburger-link:hover { background: #f3f4f6; }
+    .hamburger-link:hover { background: #f1f5f9; }
+    .card { background: #fff; border: 1px solid #d1d5db; border-radius: 14px; padding: 18px; margin-bottom: 14px; }
     .msg { padding: 10px 12px; border-radius: 8px; margin: 12px 0 16px; }
     .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
     .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
     .msg.info { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 8px 6px; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+    .field { display: grid; gap: 6px; }
+    .field label { font-weight: 700; color: #334155; }
+    input[type="text"], textarea, select { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px; font-size: 16px; color: #111827; background: #fff; }
+    textarea { min-height: 86px; resize: vertical; }
+    button { cursor: pointer; border: 1px solid #374151; background: #111827; color: #fff; border-radius: 10px; padding: 11px 14px; font-weight: 700; }
+    button.secondary { background: #fff; color: #111827; }
+    .hint { color: #64748b; font-size: 14px; line-height: 1.4; }
+    .employees { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; margin-top: 10px; }
+    .employee-option { display: flex; gap: 10px; align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px; background: #f8fafc; }
+    .employee-name { font-weight: 700; color: #111827; }
+    .badge { display: inline-block; margin-top: 4px; font-size: 12px; padding: 3px 7px; border-radius: 999px; border: 1px solid #cbd5e1; color: #475569; background: #fff; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
     a { color: #1d4ed8; text-decoration: none; }
-    .field-group { display: inline-flex; align-items: center; gap: 8px; }
-    .tooltip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 999px; border: 1px solid #94a3b8; color: #475569; font-size: 12px; font-weight: 700; cursor: help; background: #fff; }
-    .tooltip .tooltip-text { visibility: hidden; opacity: 0; transition: opacity .15s ease; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); min-width: 220px; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: #111827; color: #fff; font-size: 12px; line-height: 1.35; text-align: left; z-index: 10; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); }
-    .tooltip:hover .tooltip-text, .tooltip:focus .tooltip-text { visibility: visible; opacity: 1; }
 
-    .date-input-wrap { position: relative; display: inline-flex; align-items: center; gap: 6px; }
-    .date-input-wrap input[data-date-picker="true"] { min-width: 132px; }
-    .date-picker-button { background: #fff !important; color: #111827 !important; border: 1px solid #cbd5e1 !important; border-radius: 8px; padding: 8px 10px; }
-    .date-picker-popover { position: absolute; top: calc(100% + 8px); right: 0; width: 288px; padding: 12px; border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; box-shadow: 0 20px 42px rgba(15, 23, 42, .20); z-index: 80; }
+    .date-input-wrap { position: relative; display: flex; align-items: center; gap: 8px; }
+    .date-input-wrap input[data-date-picker="true"] { flex: 1; }
+    .date-picker-button { background: #fff !important; color: #111827 !important; border: 1px solid #cbd5e1 !important; white-space: nowrap; }
+    .date-picker-popover { position: absolute; top: calc(100% + 8px); left: 0; width: 288px; padding: 12px; border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; box-shadow: 0 20px 42px rgba(15, 23, 42, .20); z-index: 80; }
     .date-picker-popover[hidden] { display: none; }
     .date-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
     .date-picker-title { font-weight: 700; color: #111827; text-align: center; flex: 1; }
@@ -49,13 +49,11 @@
     .date-picker-day.outside { color: #94a3b8 !important; }
     .date-picker-day.today { border-color: #0f766e; }
     .date-picker-day.selected { background: #111827 !important; color: #fff !important; border-color: #111827; }
-    .field-card .date-input-wrap { width: 100%; }
-    .field-card .date-input-wrap input[data-date-picker="true"] { flex: 1; }
   </style>
 </head>
 <body>
   <div class="topbar">
-    <h1>Кабинет администратора</h1>
+    <h1>Генерация тестовых данных</h1>
     <details class="hamburger-menu" data-hamburger-menu="true">
       <summary aria-label="Открыть меню">☰</summary>
       <nav class="hamburger-panel">
@@ -69,98 +67,79 @@
       </nav>
     </details>
   </div>
-  <div class="stats">
-    <div class="chip">Записей в БД: {{ stats.responses }}</div>
-    <div class="chip">Обработанных файлов: {{ stats.processed_files }}</div>
-    <div class="chip">Заявок со статусами: {{ stats.managed_requests }}</div>
-    <div class="chip">Закрытых периодов: {{ stats.period_locks }}</div>
-  </div>
 
   {% if msg %}
     <div class="msg {{ level }}">{{ msg }}</div>
   {% endif %}
 
-  <div class="card" style="margin-bottom: 16px;">
-    <h3>Администратор</h3>
-    <div class="row">
-      <span class="chip">{{ admin_session.full_name }}</span>
-      {% if is_superuser %}<span class="chip">Суперпользователь</span>{% else %}<span class="chip">Администратор</span>{% endif %}
-      <a href="/admin/users" style="font-weight: 600;">Пользователи</a>
-      <a href="/admin/requests" style="font-weight: 600;">Заявки</a>
-      <a href="/admin/test-data" style="font-weight: 600;">Тестовые данные</a>
-      <a href="/employee?admin_mode=1" style="font-weight: 600;">Кабинет сотрудника</a>
-      {% if is_superuser %}
-        <form action="/superuser/logout" method="post">
-          <button type="submit" class="secondary">Выйти из суперпользователя</button>
-        </form>
-      {% endif %}
-    </div>
+  <div class="card">
+    <p class="hint">
+      Страница создает только тестовые заявки от существующих активных сотрудников.
+      При повторной генерации на ту же дату старый тестовый batch за эту дату будет заменен.
+    </p>
   </div>
 
-  <div class="grid">
-    <div class="card">
-      <h3>Закрыть неделю / период</h3>
-      <form action="/admin/locks/create" method="post">
-        <div class="row">
-          <select name="lock_type" required>
-            <option value="planning">Закрыть прием заявок</option>
-            <option value="actual">Закрыть ввод факта</option>
-          </select>
-          <label>С:</label>
-          <input type="hidden" name="date_from" value="{{ default_week_from }}" /><input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
-          <label>По:</label>
-          <input type="hidden" name="date_to" value="{{ default_week_to }}" /><input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
-          <input type="text" name="comment" placeholder="Комментарий" />
-          <button type="submit">Закрыть</button>
-        </div>
-      </form>
-      {% if period_locks %}
-        <table style="margin-top: 12px;">
-          <thead><tr><th>Тип</th><th>Период</th><th>Кем</th></tr></thead>
-          <tbody>
-            {% for lock in period_locks %}
-              <tr>
-                <td>{{ lock.lock_type_label }}</td>
-                <td>{{ lock.date_from_ru }} - {{ lock.date_to_ru }}</td>
-                <td>{{ lock.created_by }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      {% endif %}
+  <form action="/admin/test-data" method="post" class="card">
+    <div class="form-grid">
+      <div class="field">
+        <label>Дата тестовых заявок</label>
+        <input type="hidden" name="test_work_date" value="{{ default_work_date }}" />
+        <input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+      </div>
+
+      <div class="field">
+        <label>Режим генерации</label>
+        <select name="generation_mode" required>
+          <option value="planned">Плановые заявки</option>
+          <option value="plan_and_actual" selected>План + факт</option>
+        </select>
+        <div class="hint">В режиме «План + факт» заявка сразу получает статус «Завершена».</div>
+      </div>
+
+      <div class="field">
+        <label>Плановое время</label>
+        <input type="text" name="planned_work_time" value="{{ default_work_time }}" required />
+      </div>
+
+      <div class="field">
+        <label>Задача</label>
+        <input type="text" name="task_description" value="{{ default_task }}" required />
+      </div>
+
+      <div class="field">
+        <label>Обоснование</label>
+        <input type="text" name="justification" value="{{ default_justification }}" required />
+      </div>
+
+      <div class="field">
+        <label>АС</label>
+        <textarea name="systems" required>{{ default_systems }}</textarea>
+        <div class="hint">АС можно разделять символом | или переносом строки.</div>
+      </div>
     </div>
 
-    <div class="card">
-      <h3>Общий Excel с отчетами 1-4 за выбранную неделю</h3>
-      <form action="/generate/full" method="post">
-        <div class="row">
-          <div class="field-group"><label>С:</label><span class="tooltip" tabindex="0">?<span class="tooltip-text">Начало недели для отчета по плановым заявкам.</span></span></div>
-          <input type="hidden" name="date_from" value="{{ default_week_from }}" /><input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
-          <div class="field-group"><label>По:</label><span class="tooltip" tabindex="0">?<span class="tooltip-text">Конец недели для отчета по плановым заявкам. Сам отчет больше не закрывает период автоматически.</span></span></div>
-          <input type="hidden" name="date_to" value="{{ default_week_to }}" /><input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
-          <button type="submit">Сформировать общий Excel</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top: 16px;">
-    <h3>Готовые файлы отчетов</h3>
-    <table>
-      <thead>
-        <tr><th>Файл</th><th>Изменен</th><th>Действие</th></tr>
-      </thead>
-      <tbody>
-        {% for item in reports %}
-          <tr>
-            <td>{{ item.name }}</td>
-            <td>{{ item.modified }}</td>
-            <td><a href="/download/{{ item.name }}">Скачать</a></td>
-          </tr>
+    <h3>Сотрудники</h3>
+    {% if employees %}
+      <div class="employees">
+        {% for employee in employees %}
+          <label class="employee-option">
+            <input type="checkbox" name="employee_keys" value="{{ employee.employee_key }}" />
+            <span>
+              <span class="employee-name">{{ employee.full_name }}</span><br />
+              <span class="badge">{% if employee.grade_12_plus %}Грейд 12+: Отгул{% else %}До 12: Двойная оплата{% endif %}</span>
+            </span>
+          </label>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
+      </div>
+    {% else %}
+      <p class="hint">Нет активных сотрудников для генерации тестовых заявок.</p>
+    {% endif %}
+
+    <div class="actions">
+      <button type="submit">Сформировать тестовые заявки</button>
+      <a href="/admin">Вернуться в кабинет администратора</a>
+    </div>
+  </form>
 
   <script>
     function isoToRuDate(value) {
@@ -238,18 +217,14 @@
       visibleMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
 
       const setIsoValue = (isoValue) => {
-        if (hidden && hidden.type === "hidden") {
-          hidden.value = isoValue || "";
-        }
+        if (hidden && hidden.type === "hidden") hidden.value = isoValue || "";
         input.value = isoToRuDate(isoValue || "");
       };
 
       const syncHiddenDate = () => {
         input.value = maskRuDate(input.value);
         const isoValue = ruDateToIso(input.value);
-        if (hidden && hidden.type === "hidden") {
-          hidden.value = isoValue;
-        }
+        if (hidden && hidden.type === "hidden") hidden.value = isoValue;
         const parsed = isoToDate(isoValue);
         if (parsed) visibleMonth = new Date(parsed.getFullYear(), parsed.getMonth(), 1);
       };
@@ -341,19 +316,13 @@
         closeOtherDatePickers(popover);
       };
 
-      if (hidden && hidden.type === "hidden") {
-        setIsoValue(hidden.value);
-      }
-
+      if (hidden && hidden.type === "hidden") setIsoValue(hidden.value);
       input.addEventListener("input", syncHiddenDate);
       input.addEventListener("change", syncHiddenDate);
       input.form?.addEventListener("submit", syncHiddenDate);
       pickerButton.addEventListener("click", () => {
-        if (popover.hidden) {
-          openPicker();
-        } else {
-          closePicker();
-        }
+        if (popover.hidden) openPicker();
+        else closePicker();
       });
       document.addEventListener("click", (event) => {
         if (!wrapper.contains(event.target)) closePicker();

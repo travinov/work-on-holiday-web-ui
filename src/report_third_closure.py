@@ -7,6 +7,11 @@ from pathlib import Path
 
 import pandas as pd
 
+try:
+    from src.app_request_state import ensure_app_tables
+except ModuleNotFoundError:
+    from app_request_state import ensure_app_tables
+
 
 def build_report_dataframe(db_path: str, date_from: date | None = None, date_to: date | None = None) -> pd.DataFrame:
     date_filter = ""
@@ -14,35 +19,54 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
 
     if date_from and date_to:
         date_filter = "AND r.actual_work_date BETWEEN ? AND ?"
-        params.extend([date_from.isoformat(), date_to.isoformat()])
+        params.extend([date_from.isoformat(), date_to.isoformat(), date_from.isoformat(), date_to.isoformat()])
 
     query = f"""
-    WITH candidates AS (
+    WITH actual_base AS (
         SELECT
-            r.*,
-            ROW_NUMBER() OVER (
-                PARTITION BY r.full_name_key, r.actual_work_date
-                ORDER BY
-                    COALESCE(r.start_time, '') DESC,
-                    COALESCE(r.source_row, 0) DESC,
-                    r.response_id DESC
-            ) AS rn
+            COALESCE(r.full_name_normalized, r.full_name) AS full_name,
+            r.full_name_key,
+            r.actual_work_date,
+            r.actual_work_time,
+            COALESCE(r.start_time, '') AS sort_key
         FROM survey_responses r
         WHERE r.request_type = 'Указать отработанное время'
           AND r.actual_work_date IS NOT NULL
           AND r.actual_work_time IS NOT NULL
           {date_filter}
+        UNION ALL
+        SELECT
+            COALESCE(r.full_name_normalized, r.full_name) AS full_name,
+            r.full_name_key,
+            st.actual_work_date,
+            st.actual_work_time,
+            COALESCE(st.updated_at, st.created_at, '') AS sort_key
+        FROM app_request_state st
+        JOIN survey_responses r ON r.response_id = st.response_id
+        WHERE st.actual_work_date IS NOT NULL
+          AND st.actual_work_time IS NOT NULL
+          {date_filter.replace("r.actual_work_date", "st.actual_work_date")}
+    ),
+    candidates AS (
+        SELECT
+            ab.*,
+            ROW_NUMBER() OVER (
+                PARTITION BY ab.full_name_key, ab.actual_work_date
+                ORDER BY ab.sort_key DESC
+            ) AS rn
+        FROM actual_base ab
     )
     SELECT
-        COALESCE(c.full_name_normalized, c.full_name) AS full_name,
+        c.full_name,
         c.actual_work_date,
         c.actual_work_time
     FROM candidates c
     WHERE c.rn = 1
-    ORDER BY c.actual_work_date, full_name;
+    ORDER BY c.actual_work_date, c.full_name;
     """
 
     with sqlite3.connect(db_path) as conn:
+        ensure_app_tables(conn)
         df = pd.read_sql_query(query, conn, params=params)
 
     if df.empty:

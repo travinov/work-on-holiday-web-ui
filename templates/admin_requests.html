@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Администратор - Заявки</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; background: #f8fafc; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .hamburger-menu { position: relative; }
+    .hamburger-menu summary { list-style: none; cursor: pointer; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; padding: 8px 12px; font-size: 20px; line-height: 1; user-select: none; }
+    .hamburger-menu summary::-webkit-details-marker { display: none; }
+    .hamburger-panel { position: absolute; right: 0; top: calc(100% + 8px); min-width: 240px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px; box-shadow: 0 14px 32px rgba(15, 23, 42, .16); padding: 10px; z-index: 20; display: grid; gap: 8px; }
+    .hamburger-link { display: block; padding: 8px 10px; border-radius: 8px; color: #1f2937; text-decoration: none; }
+    .hamburger-link:hover { background: #f1f5f9; }
+    .card { background: #fff; border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 8px 6px; vertical-align: top; }
+    .badge { display: inline-block; font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    a { color: #1d4ed8; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1 style="margin: 0;">Заявки</h1>
+    <details class="hamburger-menu" data-hamburger-menu="true">
+      <summary aria-label="Открыть меню">☰</summary>
+      <nav class="hamburger-panel">
+        <a class="hamburger-link" href="/">Главная</a>
+        <a class="hamburger-link" href="/admin">Кабинет администратора</a>
+        <a class="hamburger-link" href="/employee">Кабинет сотрудника</a>
+        <a class="hamburger-link" href="/employee?admin_mode=1">Кабинет сотрудника: админ</a>
+        <a class="hamburger-link" href="/admin/users">Пользователи</a>
+        <a class="hamburger-link" href="/admin/requests">Заявки</a>
+        <a class="hamburger-link" href="/admin/test-data">Тестовые данные</a>
+      </nav>
+    </details>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>ФИО</th>
+          <th>Плановая дата</th>
+          <th>Время</th>
+          <th>Статус</th>
+          <th>Условия</th>
+          <th>Задача</th>
+          <th>Факт</th>
+          <th>Закрытие</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in requests_data %}
+          <tr>
+            <td>{{ item.full_name }}</td>
+            <td>{{ item.planned_work_date_ru or '—' }}</td>
+            <td>{{ item.planned_work_time or '—' }}</td>
+            <td><span class="badge">{{ item.status_label }}</span></td>
+            <td>{{ item.payment_type or '—' }}</td>
+            <td>{{ item.task_description or '—' }}</td>
+            <td>
+              {% if item.actual_work_date or item.actual_work_time %}
+                {{ item.actual_work_date or '—' }}<br />{{ item.actual_work_time or '' }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              {% if item.planning_lock_label %}<div>Прием: {{ item.planning_lock_label }}</div>{% endif %}
+              {% if item.actual_lock_label %}<div>Факт: {{ item.actual_lock_label }}</div>{% endif %}
+              {% if item.lock_week_label %}<div>Legacy: {{ item.lock_week_label }}</div>{% endif %}
+              {% if not item.planning_lock_label and not item.actual_lock_label and not item.lock_week_label %}—{% endif %}
+            </td>
+            <td><a href="/employee?admin_mode=1&employee_key={{ item.employee_key }}">Открыть кабинет</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

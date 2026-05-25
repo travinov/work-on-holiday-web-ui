@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Администратор - Пользователи</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; background: #f8fafc; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .hamburger-menu { position: relative; }
+    .hamburger-menu summary { list-style: none; cursor: pointer; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; padding: 8px 12px; font-size: 20px; line-height: 1; user-select: none; }
+    .hamburger-menu summary::-webkit-details-marker { display: none; }
+    .hamburger-panel { position: absolute; right: 0; top: calc(100% + 8px); min-width: 240px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px; box-shadow: 0 14px 32px rgba(15, 23, 42, .16); padding: 10px; z-index: 20; display: grid; gap: 8px; }
+    .hamburger-link { display: block; padding: 8px 10px; border-radius: 8px; color: #1f2937; text-decoration: none; }
+    .hamburger-link:hover { background: #f1f5f9; }
+    .card { background: #fff; border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-bottom: 14px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 1180px; }
+    th, td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 8px 6px; vertical-align: top; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .check-row { display: inline-flex; gap: 8px; align-items: center; white-space: nowrap; }
+    .msg { padding: 10px 12px; border-radius: 8px; margin: 12px 0 16px; }
+    .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
+    .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+    .msg.info { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
+    button, select, input[type="text"] { padding: 8px 10px; }
+    button { cursor: pointer; border: 1px solid #374151; background: #111827; color: #fff; border-radius: 8px; }
+    a { color: #1d4ed8; text-decoration: none; }
+    .badge { display: inline-block; font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1 style="margin: 0;">Пользователи</h1>
+    <details class="hamburger-menu" data-hamburger-menu="true">
+      <summary aria-label="Открыть меню">☰</summary>
+      <nav class="hamburger-panel">
+        <a class="hamburger-link" href="/">Главная</a>
+        <a class="hamburger-link" href="/admin">Кабинет администратора</a>
+        <a class="hamburger-link" href="/employee">Кабинет сотрудника</a>
+        <a class="hamburger-link" href="/employee?admin_mode=1">Кабинет сотрудника: админ</a>
+        <a class="hamburger-link" href="/admin/users">Пользователи</a>
+        <a class="hamburger-link" href="/admin/requests">Заявки</a>
+        <a class="hamburger-link" href="/admin/test-data">Тестовые данные</a>
+      </nav>
+    </details>
+  </div>
+
+  {% if msg %}
+    <div class="msg {{ level }}">{{ msg }}</div>
+  {% endif %}
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>ФИО</th>
+          <th>Заявок</th>
+          <th>Статус</th>
+          <th>Администратор</th>
+          <th>Грейд 12+</th>
+          <th>Токен</th>
+          <th>Флаг "забыл"</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+          <tr>
+            <td>{{ user.full_name }}</td>
+            <td>{{ user.requests_count }}</td>
+            <td>
+              <form action="/admin/employee/status" method="post" class="row">
+                <input type="hidden" name="employee_key" value="{{ user.employee_key }}" />
+                <select name="employee_status">
+                  <option value="active" {% if user.employee_status == 'active' %}selected{% endif %}>Активен</option>
+                  <option value="blocked" {% if user.employee_status == 'blocked' %}selected{% endif %}>Заблокирован</option>
+                  <option value="archived" {% if user.employee_status == 'archived' %}selected{% endif %}>Архив</option>
+                </select>
+                <input type="text" name="status_reason" value="{{ user.status_reason or '' }}" placeholder="Причина" />
+                <button type="submit">Сохранить</button>
+              </form>
+            </td>
+            <td>
+              <form action="/admin/employee/admin-role" method="post" class="row">
+                <input type="hidden" name="employee_key" value="{{ user.employee_key }}" />
+                <input type="hidden" name="is_admin" value="0" />
+                <label class="check-row">
+                  <input type="checkbox" name="is_admin" value="1" onchange="this.form.submit()" {% if user.is_admin %}checked{% endif %} />
+                </label>
+              </form>
+            </td>
+            <td>
+              <form action="/admin/employee/grade" method="post" class="row">
+                <input type="hidden" name="employee_key" value="{{ user.employee_key }}" />
+                <input type="hidden" name="grade_12_plus" value="0" />
+                <label class="check-row">
+                  <input type="checkbox" name="grade_12_plus" value="1" onchange="this.form.submit()" {% if user.grade_12_plus %}checked{% endif %} />
+                  Да
+                </label>
+              </form>
+            </td>
+            <td>
+              <div>Выдан: {{ user.token_issued_at or 'Нет' }}</div>
+              <div>Перевыпуск: {{ user.token_reissued_at or '—' }}</div>
+            </td>
+            <td>{% if user.forgot_requested_at %}<span class="badge">Да, {{ user.forgot_requested_at }}</span>{% else %}—{% endif %}</td>
+            <td>
+              <div class="row">
+                <a href="/employee?admin_mode=1&employee_key={{ user.employee_key }}">Открыть кабинет</a>
+                <form action="/admin/employee/reissue-token" method="post">
+                  <input type="hidden" name="employee_key" value="{{ user.employee_key }}" />
+                  <button type="submit">Перевыпустить токен</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

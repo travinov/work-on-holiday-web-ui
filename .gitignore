@@ -13,6 +13,7 @@ __pycache__/
 reports/
 survey_results.db
 generated_exports/
+restore_points/
 ~$*.xlsx
 
 # Potentially sensitive source exports

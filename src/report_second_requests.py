@@ -7,6 +7,11 @@ from pathlib import Path
 
 import pandas as pd
 
+try:
+    from src.app_request_state import ensure_app_tables
+except ModuleNotFoundError:
+    from app_request_state import ensure_app_tables
+
 
 def build_report_dataframe(db_path: str, date_from: date | None = None, date_to: date | None = None) -> pd.DataFrame:
     candidate_date_filter = ""
@@ -19,37 +24,51 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
     query = f"""
     WITH candidates AS (
         SELECT
-            r.*,
-            ROW_NUMBER() OVER (
-                PARTITION BY r.full_name_key, r.planned_work_date, r.request_type
-                ORDER BY
-                    COALESCE(r.start_time, '') DESC,
-                    COALESCE(r.source_row, 0) DESC,
-                    r.response_id DESC
-            ) AS rn
+            r.response_id,
+            r.full_name_key,
+            COALESCE(r.full_name_normalized, r.full_name) AS full_name,
+            COALESCE(st.override_planned_work_date, r.planned_work_date) AS planned_work_date,
+            COALESCE(st.override_planned_work_time, r.planned_work_time) AS planned_work_time,
+            COALESCE(st.override_payment_type, r.payment_type) AS exit_conditions,
+            COALESCE(st.override_task_description, r.task_description) AS task_description,
+            COALESCE(st.override_justification, r.justification) AS justification,
+            COALESCE(st.status, 'active') AS request_status
         FROM survey_responses r
+        LEFT JOIN app_request_state st ON st.response_id = r.response_id
         WHERE r.request_type = 'Подать заявку'
-          AND r.planned_work_date IS NOT NULL
-          {candidate_date_filter}
+          AND COALESCE(st.override_planned_work_date, r.planned_work_date) IS NOT NULL
+          {candidate_date_filter.replace("r.planned_work_date", "COALESCE(st.override_planned_work_date, r.planned_work_date)")}
     ),
-    actual_candidates AS (
+    actual_base AS (
         SELECT
             r.full_name_key,
             r.actual_work_date,
-            ROW_NUMBER() OVER (
-                PARTITION BY r.full_name_key, r.actual_work_date
-                ORDER BY
-                    COALESCE(r.start_time, '') DESC,
-                    COALESCE(r.source_row, 0) DESC,
-                    r.response_id DESC
-            ) AS rn
+            COALESCE(r.start_time, '') AS sort_key
         FROM survey_responses r
         WHERE r.request_type = 'Указать отработанное время'
           AND r.actual_work_date IS NOT NULL
           AND r.actual_work_time IS NOT NULL
+        UNION ALL
+        SELECT
+            r.full_name_key,
+            st.actual_work_date,
+            COALESCE(st.updated_at, st.created_at, '') AS sort_key
+        FROM app_request_state st
+        JOIN survey_responses r ON r.response_id = st.response_id
+        WHERE st.actual_work_date IS NOT NULL
+          AND st.actual_work_time IS NOT NULL
+    ),
+    actual_candidates AS (
+        SELECT
+            ab.*,
+            ROW_NUMBER() OVER (
+                PARTITION BY ab.full_name_key, ab.actual_work_date
+                ORDER BY ab.sort_key DESC
+            ) AS rn
+        FROM actual_base ab
     )
     SELECT
-        COALESCE(c.full_name_normalized, c.full_name) AS full_name,
+        c.full_name,
         (
             SELECT COUNT(*)
             FROM actual_candidates ac2
@@ -57,22 +76,18 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
               AND ac2.full_name_key = c.full_name_key
               AND ac2.actual_work_date BETWEEN date(c.planned_work_date, '-29 day') AND c.planned_work_date
         ) AS exits_last_month,
-        c.payment_type AS exit_conditions,
+        c.exit_conditions,
         c.task_description,
         c.justification,
         c.planned_work_date,
         c.planned_work_time
     FROM candidates c
-    LEFT JOIN actual_candidates am
-        ON am.full_name_key = c.full_name_key
-       AND am.actual_work_date = c.planned_work_date
-       AND am.rn = 1
-    WHERE c.rn = 1
-      AND am.full_name_key IS NULL
-    ORDER BY c.planned_work_date, full_name;
+    WHERE c.request_status <> 'cancelled'
+    ORDER BY c.planned_work_date, c.full_name;
     """
 
     with sqlite3.connect(db_path) as conn:
+        ensure_app_tables(conn)
         df = pd.read_sql_query(query, conn, params=params)
 
     if df.empty:
@@ -162,7 +177,7 @@ def main() -> None:
     if date_from and date_to:
         print(f"Фильтр по плановой дате: {date_from.isoformat()} .. {date_to.isoformat()}")
     else:
-        print("Фильтр по дате: не задан (все заявки без факта)")
+        print("Фильтр по дате: не задан (все неотмененные заявки)")
     print(f"Строк в отчете: {len(report_df)}")
     print(f"Файл: {output_path}")
 

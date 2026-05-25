@@ -1,0 +1,849 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Кабинет сотрудника</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; background: #f8fafc; }
+    a { color: #1d4ed8; text-decoration: none; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .hamburger-menu { position: relative; }
+    .hamburger-menu summary { list-style: none; cursor: pointer; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; padding: 8px 12px; font-size: 20px; line-height: 1; user-select: none; }
+    .hamburger-menu summary::-webkit-details-marker { display: none; }
+    .hamburger-panel { position: absolute; right: 0; top: calc(100% + 8px); min-width: 240px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px; box-shadow: 0 14px 32px rgba(15, 23, 42, .16); padding: 10px; z-index: 20; display: grid; gap: 8px; }
+    .hamburger-link { display: block; padding: 8px 10px; border-radius: 8px; color: #1f2937; text-decoration: none; }
+    .hamburger-link:hover { background: #f1f5f9; }
+    .card { background: #fff; border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+    .msg { padding: 10px 12px; border-radius: 8px; margin: 10px 0 14px; }
+    .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
+    .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+    .msg.info { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .check-row { display: inline-flex; gap: 8px; align-items: center; color: #334155; }
+    .check-row input[type="checkbox"] { width: auto; }
+    select, input, textarea, button { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; font-size: 15px; line-height: 1.35; }
+    textarea { width: 100%; min-height: 64px; }
+    button { background: #111827; color: #fff; cursor: pointer; }
+    button.light { background: #fff; color: #111827; }
+    button.cancel { background: #b91c1c; color: #fff; border-color: #991b1b; }
+    .badge { display: inline-block; font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; }
+    .badge.active { background: #eff6ff; color: #1e40af; border-color: #93c5fd; }
+    .badge.completed { background: #ecfdf5; color: #065f46; border-color: #6ee7b7; }
+    .badge.cancelled { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
+    .chip { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 10px; border-radius: 999px; border: 1px solid #dbe4f0; background: #f8fbff; color: #334155; }
+    .hero-card { background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%); border-color: #cbd5e1; }
+    .hero-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+    .hero-title { margin: 0; font-size: 30px; letter-spacing: -0.03em; }
+    .hero-subtitle { margin: 8px 0 0; color: #475569; max-width: 60ch; line-height: 1.45; }
+    .hero-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+    .section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 12px; }
+    .section-title { margin: 0; font-size: 24px; letter-spacing: -0.03em; }
+    .section-note { color: #64748b; font-size: 14px; }
+    .create-request { padding: 0; overflow: hidden; background: #fff; }
+    .create-request summary { list-style: none; cursor: pointer; padding: 0; }
+    .create-request summary::-webkit-details-marker { display: none; }
+    .create-trigger { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 14px 16px; }
+    .create-trigger-main { display: grid; gap: 6px; }
+    .create-trigger-title { font-size: 18px; font-weight: 700; color: #0f172a; }
+    .create-trigger-text { color: #475569; font-size: 14px; line-height: 1.35; max-width: 52ch; }
+    .create-trigger-action { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 16px; border-radius: 12px; background: #111827; color: #fff; font-weight: 700; white-space: nowrap; }
+    .create-request[open] .create-trigger { border-bottom: 1px solid #e2e8f0; }
+    .create-body { padding: 12px 16px 16px; background: transparent; }
+    .form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; align-items: start; }
+    .field-card { display: grid; gap: 6px; padding: 0; border: 0; background: transparent; }
+    .field-card label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 650; margin: 0; color: #334155; }
+    .field-card input, .field-card select, .field-card textarea { width: 100%; min-height: 42px; background: #fff; color: #0f172a; }
+    .field-card select { display: block; height: 42px; background-color: #fff; }
+    .field-card textarea { min-height: 76px; padding-top: 10px; resize: vertical; }
+    .field-card.span-2 { grid-column: 1 / -1; }
+    .create-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+    .create-actions button { min-height: 42px; padding: 0 16px; font-weight: 700; }
+    .create-note { color: #64748b; font-size: 14px; max-width: 58ch; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-top: 10px; }
+    .request-item { padding: 0; overflow: hidden; }
+    .request-item summary { list-style: none; cursor: pointer; padding: 16px; }
+    .request-item summary::-webkit-details-marker { display: none; }
+    .request-item[open] summary { border-bottom: 1px solid #e5e7eb; }
+    .summary-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .summary-main { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-weight: 600; }
+    .summary-divider { color: #94a3b8; }
+    .summary-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .request-body { padding: 16px; }
+    .meta { color: #4b5563; font-size: 14px; margin-top: 6px; }
+    .prewrap { white-space: pre-line; }
+    .field-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .tooltip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 999px; border: 1px solid #94a3b8; color: #475569; font-size: 12px; font-weight: 700; cursor: help; background: #fff; }
+    .tooltip .tooltip-text { visibility: hidden; opacity: 0; transition: opacity .15s ease; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); min-width: 220px; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: #111827; color: #fff; font-size: 12px; line-height: 1.35; text-align: left; z-index: 10; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); }
+    .tooltip:hover .tooltip-text, .tooltip:focus .tooltip-text { visibility: visible; opacity: 1; }
+
+    .date-input-wrap { position: relative; display: flex; align-items: stretch; gap: 6px; width: 100%; }
+    .date-input-wrap input[data-date-picker="true"] { min-width: 0; }
+    .date-picker-button { width: 42px; min-width: 42px; background: #fff !important; color: #111827 !important; border: 1px solid #cbd5e1 !important; border-radius: 8px; padding: 0; font-size: 17px; line-height: 1; }
+    .date-picker-popover { position: absolute; top: calc(100% + 8px); left: 0; width: min(288px, calc(100vw - 48px)); padding: 12px; border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; box-shadow: 0 20px 42px rgba(15, 23, 42, .20); z-index: 80; }
+    .date-picker-popover[hidden] { display: none; }
+    .date-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .date-picker-title { font-weight: 700; color: #111827; text-align: center; flex: 1; }
+    .date-picker-nav { min-width: 34px; min-height: 34px; padding: 0 8px; background: #f8fafc !important; color: #111827 !important; border-color: #cbd5e1 !important; }
+    .date-picker-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .date-picker-weekday { font-size: 12px; color: #64748b; text-align: center; padding: 5px 0; }
+    .date-picker-day { min-width: 34px; min-height: 34px; padding: 0; border: 1px solid transparent; border-radius: 10px; background: #fff !important; color: #111827 !important; }
+    .date-picker-day:hover { border-color: #94a3b8; background: #f8fafc !important; }
+    .date-picker-day.outside { color: #94a3b8 !important; }
+    .date-picker-day.today { border-color: #0f766e; }
+    .date-picker-day.selected { background: #111827 !important; color: #fff !important; border-color: #111827; }
+    .field-card .date-input-wrap { width: 100%; align-items: stretch; }
+    .field-card .date-input-wrap input[data-date-picker="true"] { flex: 1; }
+    .field-card .date-picker-button { min-height: 42px; white-space: nowrap; }
+    .row .date-input-wrap { flex: 1 1 260px; max-width: 360px; }
+    .row .date-input-wrap input[data-date-picker="true"] { flex: 1; }
+    .systems-editor { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 0; min-height: 42px; width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #0f172a; }
+    .systems-token-list { display: contents; }
+    .system-token { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; max-width: 100%; padding: 3px 0; color: #0f172a; overflow-wrap: anywhere; }
+    .system-token + .system-token { margin-left: 10px; padding-left: 10px; border-left: 1px solid #94a3b8; }
+    .system-token-remove { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 999px; background: #e2e8f0 !important; color: #334155 !important; font-size: 14px; line-height: 1; }
+    .systems-token-input { flex: 1 1 220px; min-width: 180px; min-height: 28px !important; padding: 3px 0 !important; border: 0 !important; border-radius: 0 !important; outline: none; background: transparent !important; }
+    .field-hint { color: #64748b; font-size: 13px; line-height: 1.35; }
+    @media (max-width: 720px) {
+      body { margin: 16px; }
+      .hero-title { font-size: 24px; }
+      .create-trigger { align-items: flex-start; }
+      .create-trigger-action { width: 100%; }
+      .form-grid { grid-template-columns: 1fr; }
+      .field-card.span-2 { grid-column: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1 style="margin: 0;">Кабинет сотрудника</h1>
+    <details class="hamburger-menu" data-hamburger-menu="true">
+      <summary aria-label="Открыть меню">☰</summary>
+      <nav class="hamburger-panel">
+        <a class="hamburger-link" href="/">Главная</a>
+        {% if is_admin %}
+          <a class="hamburger-link" href="/admin">Кабинет администратора</a>
+        {% endif %}
+        <a class="hamburger-link" href="/employee">Кабинет сотрудника</a>
+        {% if is_admin %}
+          <a class="hamburger-link" href="/employee?admin_mode=1">Кабинет сотрудника: админ</a>
+          <a class="hamburger-link" href="/admin/users">Пользователи</a>
+          <a class="hamburger-link" href="/admin/requests">Заявки</a>
+          <a class="hamburger-link" href="/admin/test-data">Тестовые данные</a>
+        {% endif %}
+      </nav>
+    </details>
+  </div>
+
+  {% if admin_mode %}
+    <div class="card" style="background:#eff6ff; border-color:#93c5fd;">
+      <strong>Режим администратора.</strong> В этом режиме можно корректировать заявки даже после закрытия недели отчетом.
+    </div>
+  {% endif %}
+
+  {% if msg %}
+    <div class="msg {{ level }}">{{ msg }}</div>
+  {% endif %}
+
+  {% if admin_mode %}
+    <div class="card">
+      <form action="/employee" method="get" class="row">
+        <input type="hidden" name="admin_mode" value="1" />
+        <label><strong>Сотрудник:</strong></label>
+        <select name="employee_key" required>
+          <option value="">Выберите сотрудника</option>
+          {% for employee in employees %}
+            <option value="{{ employee.employee_key }}" {% if selected and selected.employee_key == employee.employee_key %}selected{% endif %}>
+              {{ employee.full_name }}
+            </option>
+          {% endfor %}
+        </select>
+        <button type="submit">Открыть кабинет</button>
+      </form>
+    </div>
+  {% elif not employee_session %}
+    <div class="card">
+      <h3 style="margin-top:0;">Вход сотрудника</h3>
+      <p class="meta">Укажите ФИО ровно как в заявке. Если токена еще нет, он будет создан и показан один раз. Если токен уже существует, система попросит его ввести.</p>
+      <form action="/employee/login" method="post">
+        <div class="row">
+          <label><strong>ФИО</strong></label>
+          <span class="tooltip" tabindex="0">?
+            <span class="tooltip-text">Укажите ФИО в том же виде, как оно указано в заявке. По этому полю система ищет ваш кабинет.</span>
+          </span>
+          <input
+            type="text"
+            name="full_name"
+            placeholder="Фамилия Имя Отчество"
+            style="min-width: 320px;"
+            value="{{ pending_employee_name or '' }}"
+            required
+          />
+        </div>
+        {% if pending_employee_key %}
+          <input type="hidden" name="employee_key" value="{{ pending_employee_key }}" />
+          <div class="row" style="margin-top:10px;">
+            <label><strong>Токен</strong></label>
+            <span class="tooltip" tabindex="0">?
+              <span class="tooltip-text">Введите ранее выданный токен. Если токен потерян, используйте кнопку Забыл токен.</span>
+            </span>
+            <input type="text" name="access_token" placeholder="Токен доступа" style="min-width: 320px;" required />
+            <button type="submit">Войти</button>
+          </div>
+        {% else %}
+          <div class="row" style="margin-top:10px;">
+            <input type="hidden" name="grade_12_plus" value="0" />
+            <label class="check-row">
+              <input type="checkbox" name="grade_12_plus" value="1" />
+              <strong>Мой грейд 12 или выше</strong>
+            </label>
+            <span class="tooltip" tabindex="0">?
+              <span class="tooltip-text">Используется в отчетности для проверки условий выхода. Сам номер грейда не вводится.</span>
+            </span>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button type="submit">Продолжить</button>
+          </div>
+        {% endif %}
+      </form>
+
+      {% if pending_employee_key %}
+        <form action="/employee/forgot-token" method="post" style="margin-top: 10px;">
+          <input type="hidden" name="full_name" value="{{ pending_employee_name }}" />
+          <button type="submit" class="light">Забыл токен</button>
+        </form>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if selected %}
+    <div class="card hero-card">
+      <div class="hero-head">
+        <div>
+          <h2 class="hero-title">{{ selected.full_name }}</h2>
+          <p class="hero-subtitle">
+            Работайте с заявками без перегруженного экрана: создавайте новую заявку только когда это нужно, а действующие записи просматривайте ниже в компактном списке.
+          </p>
+          <div class="hero-meta">
+            <span class="chip">Заявок в кабинете: {{ requests|length }}</span>
+            {% if profile %}
+              <span class="chip">Грейд 12+: {% if profile.grade_12_plus %}Да{% else %}Нет{% endif %}</span>
+            {% endif %}
+            {% if token_meta %}
+              <span class="chip">Токен выдан: {{ token_meta.issued_at }}</span>
+            {% endif %}
+            {% if token_meta and token_meta.reissued_at %}
+              <span class="chip">Перевыпуск: {{ token_meta.reissued_at }}</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="row" style="margin-top: 4px;">
+        {% if admin_mode %}
+          <form action="/admin/employee/reissue-token" method="post">
+            <input type="hidden" name="employee_key" value="{{ selected.employee_key }}" />
+            <button type="submit" class="light">Перевыпустить токен</button>
+          </form>
+        {% elif employee_session %}
+          <form action="/employee/logout" method="post">
+            <button type="submit" class="light">Выйти</button>
+          </form>
+        {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <details class="card create-request">
+      <summary>
+        <div class="create-trigger">
+          <div class="create-trigger-main">
+            <div class="create-trigger-title">Создать новую заявку</div>
+            <div class="create-trigger-text">
+              Откройте форму только в момент, когда нужно добавить новый выход. Это поддерживает чистый экран и не смешивает создание новой заявки с уже существующими.
+            </div>
+          </div>
+          <span class="create-trigger-action">Открыть форму</span>
+        </div>
+      </summary>
+      <div class="create-body">
+      <form action="/employee/request/create" method="post">
+        <input type="hidden" name="employee_key" value="{{ selected.employee_key }}" />
+        <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
+        <div class="form-grid">
+          <div class="field-card">
+            <label>Плановая дата
+              <span class="tooltip" tabindex="0">?
+                <span class="tooltip-text">Дата выхода в выходной день. Можно создавать несколько заявок на одну дату.</span>
+              </span>
+            </label>
+            <input type="hidden" name="planned_work_date" value="{{ today }}" />
+            <input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+          </div>
+          <div class="field-card">
+            <label>Плановое время
+              <span class="tooltip" tabindex="0">?
+                <span class="tooltip-text">Формат времени: HH:MM - HH:MM. Можно указать отдельный временной слот в тот же день.</span>
+              </span>
+            </label>
+            <input type="text" name="planned_work_time" data-time-mask="true" placeholder="09:00 - 18:00" required />
+          </div>
+          <div class="field-card">
+            <label>Условия выхода
+              <span class="tooltip" tabindex="0">?
+                <span class="tooltip-text">Укажите тип компенсации за выход в выходной день.</span>
+              </span>
+            </label>
+            <select name="payment_type">
+              <option value="Отгул">Отгул</option>
+              {% if not profile or not profile.grade_12_plus %}
+                <option value="Двойная оплата">Двойная оплата</option>
+              {% endif %}
+            </select>
+            {% if profile and profile.grade_12_plus %}
+              <div class="meta">Для грейда 12+ доступен только отгул.</div>
+            {% endif %}
+          </div>
+          <div class="field-card span-2">
+            <label>Задача
+              <span class="tooltip" tabindex="0">?
+                <span class="tooltip-text">Название релиза, задачи или вида работ.</span>
+              </span>
+            </label>
+            <textarea name="task_description" placeholder="Например: релиз ФП05, сопровождение ночного окна"></textarea>
+          </div>
+          <div class="field-card span-2">
+            <label>Обоснование
+              <span class="tooltip" tabindex="0">?
+                <span class="tooltip-text">Почему работы нужно выполнять именно в выходной день.</span>
+              </span>
+            </label>
+            <textarea name="justification" placeholder="Например: недоступность окна в рабочее время"></textarea>
+          </div>
+          <div class="field-card span-2">
+            <label>АС
+              <span class="tooltip" tabindex="0">?
+                <span class="tooltip-text">Введите одну АС и нажмите Enter или Tab. Несколько АС будут разделены вертикальной линией.</span>
+              </span>
+            </label>
+            <input type="hidden" name="systems" data-systems-hidden value="" />
+            <div class="systems-editor" data-systems-editor>
+              <div class="systems-token-list" data-systems-token-list></div>
+              <input type="text" class="systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" />
+            </div>
+            <div class="field-hint">После ввода одной АС нажмите Enter или Tab. Также можно вставить список через |, запятую или точку с запятой.</div>
+          </div>
+        </div>
+        <div class="create-actions">
+          <div class="create-note">Создавайте отдельную заявку на каждый независимый временной слот, даже если он приходится на ту же дату.</div>
+          <button type="submit">Создать заявку</button>
+        </div>
+      </form>
+      </div>
+    </details>
+
+    <div class="section-head">
+      <div>
+        <h3 class="section-title">Мои заявки</h3>
+        <div class="section-note">Компактный список: дата, день недели и время. Детали открываются только по необходимости.</div>
+      </div>
+    </div>
+
+    {% if not requests %}
+      <div class="card">
+        <div class="section-note">Пока нет созданных заявок. Используйте кнопку `Создать новую заявку`, чтобы добавить первый выход в выходной.</div>
+      </div>
+    {% endif %}
+
+    {% for req in requests %}
+      <details class="card request-item">
+        <summary>
+          <div class="summary-row">
+            <div class="summary-main">
+              <span>{{ req.planned_work_date_ru or '—' }}</span>
+              <span class="summary-divider">/</span>
+              <span>{{ req.planned_work_weekday_ru or '—' }}</span>
+              <span class="summary-divider">/</span>
+              <span>{{ req.planned_work_time or '—' }}</span>
+            </div>
+            <div class="summary-meta">
+              <span class="badge {{ req.status }}">{{ req.status_label }}</span>
+              <span class="meta">UID: {{ req.request_uid }}</span>
+            </div>
+          </div>
+        </summary>
+        <div class="request-body">
+
+        <div class="meta" style="margin-top: 8px;"><strong>Условия выхода:</strong> {{ req.payment_type or '—' }}</div>
+        <div class="meta"><strong>Задача:</strong> {{ req.task_description or '—' }}</div>
+        <div class="meta"><strong>Обоснование:</strong> {{ req.justification or '—' }}</div>
+        <div class="meta prewrap"><strong>АС:</strong>
+{{ req.systems_multiline or '—' }}</div>
+
+        <div class="grid">
+          <div class="card" style="margin:0;">
+            <h4 style="margin-top:0;">Фактически отработанное время</h4>
+            <form action="/employee/request/actual" method="post">
+              <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
+              <input type="hidden" name="response_id" value="{{ req.response_id }}" />
+              <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
+              <div class="row">
+                <div class="field-group">
+                  <label>Дата:</label>
+                  <span class="tooltip" tabindex="0">?
+                    <span class="tooltip-text">Укажите фактическую дату выхода на работу по этой заявке.</span>
+                  </span>
+                </div>
+                <input type="hidden" name="actual_work_date" value="{{ req.actual_work_date_iso or today }}" />
+                <input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+              </div>
+              <div class="row" style="margin-top:8px;">
+                <div class="field-group">
+                  <label>Время:</label>
+                  <span class="tooltip" tabindex="0">?
+                    <span class="tooltip-text">Формат времени: HH:MM - HH:MM. Пример: 09:00 - 18:00.</span>
+                  </span>
+                </div>
+                <input type="text" name="actual_work_time" data-time-mask="true" value="{{ req.actual_work_time or '' }}" placeholder="09:00 - 18:00" required />
+              </div>
+              <div style="margin-top:10px;">
+                <button type="submit" {% if req.status == 'cancelled' or not req.can_edit %}disabled{% endif %}>Сохранить фактическое время</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card" style="margin:0;">
+            <h4 style="margin-top:0;">Корректировка заявки</h4>
+            <form action="/employee/request/correct" method="post">
+              <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
+              <input type="hidden" name="response_id" value="{{ req.response_id }}" />
+              <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
+
+              <div class="row">
+                <div class="field-group">
+                  <label>Плановая дата:</label>
+                  <span class="tooltip" tabindex="0">?
+                    <span class="tooltip-text">Дата, на которую переносится или уточняется выход по заявке.</span>
+                  </span>
+                </div>
+                <input type="hidden" name="planned_work_date" value="{{ req.planned_work_date_iso }}" />
+                <input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+              </div>
+              <div class="row" style="margin-top:8px;">
+                <div class="field-group">
+                  <label>Плановое время:</label>
+                  <span class="tooltip" tabindex="0">?
+                    <span class="tooltip-text">Формат времени: HH:MM - HH:MM. Пример: 09:00 - 18:00.</span>
+                  </span>
+                </div>
+                <input type="text" name="planned_work_time" data-time-mask="true" value="{{ req.planned_work_time }}" placeholder="09:00 - 18:00" required />
+              </div>
+              <div class="row" style="margin-top:8px;">
+                <label>Условия выхода:</label>
+                <span class="tooltip" tabindex="0">?
+                  <span class="tooltip-text">Выберите компенсацию за выход: отгул или двойная оплата.</span>
+                </span>
+                <select name="payment_type">
+                  <option value="Отгул" {% if req.payment_type == 'Отгул' %}selected{% endif %}>Отгул</option>
+                  {% if not profile or not profile.grade_12_plus %}
+                    <option value="Двойная оплата" {% if req.payment_type == 'Двойная оплата' %}selected{% endif %}>Двойная оплата</option>
+                  {% endif %}
+                </select>
+                {% if profile and profile.grade_12_plus %}
+                  <span class="meta">Для грейда 12+ доступен только отгул.</span>
+                {% endif %}
+              </div>
+              <div style="margin-top:8px;">
+                <label>Задача:</label>
+                <span class="tooltip" tabindex="0">?
+                  <span class="tooltip-text">Кратко опишите релиз, задачу или вид работ, ради которых оформлен выход.</span>
+                </span>
+                <textarea name="task_description">{{ req.task_description }}</textarea>
+              </div>
+              <div style="margin-top:8px;">
+                <label>Обоснование:</label>
+                <span class="tooltip" tabindex="0">?
+                  <span class="tooltip-text">Укажите причину, по которой работы нужно выполнять именно в выходной день.</span>
+                </span>
+                <textarea name="justification">{{ req.justification }}</textarea>
+              </div>
+              <div style="margin-top:8px;">
+                <label>АС (по одной в строке или через |):</label>
+                <span class="tooltip" tabindex="0">?
+                  <span class="tooltip-text">Введите одну АС и нажмите Enter или Tab. Несколько АС будут разделены вертикальной линией.</span>
+                </span>
+                <input type="hidden" name="systems" data-systems-hidden value="{{ req.systems_multiline }}" />
+                <div class="systems-editor" data-systems-editor>
+                  <div class="systems-token-list" data-systems-token-list></div>
+                  <input type="text" class="systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" />
+                </div>
+                <div class="field-hint">После ввода одной АС нажмите Enter или Tab. Также можно вставить список через |, запятую или точку с запятой.</div>
+              </div>
+              <div style="margin-top:10px;">
+                <button type="submit" {% if not req.can_edit %}disabled{% endif %}>Сохранить корректировку</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <form action="/employee/request/cancel" method="post" style="margin-top: 10px;">
+          <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
+          <input type="hidden" name="response_id" value="{{ req.response_id }}" />
+          <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
+          <button type="submit" class="cancel" {% if req.status == 'cancelled' or not req.can_edit %}disabled{% endif %}>Перевести в статус "Отменена"</button>
+        </form>
+
+        {% if req.is_locked %}
+          <div class="meta" style="margin-top: 10px; color: #b45309;">
+            {% if req.planning_lock_label %}Прием заявок закрыт: {{ req.planning_lock_label }}.{% endif %}
+            {% if req.actual_lock_label %}Ввод факта закрыт: {{ req.actual_lock_label }}.{% endif %}
+            {% if req.lock_week_label %}Неделя закрыта legacy-отчетом: {{ req.lock_week_label }}.{% endif %}
+            {% if not admin_mode %}Редактирование сотрудником отключено.{% endif %}
+          </div>
+        {% endif %}
+        </div>
+      </details>
+    {% endfor %}
+  {% endif %}
+  <script>
+    function clampTimePart(part, max) {
+      if (!part) return "";
+      const num = Math.min(parseInt(part, 10), max);
+      return String(Number.isNaN(num) ? 0 : num).padStart(2, "0");
+    }
+
+    function maskTimeRange(value) {
+      const digits = (value || "").replace(/\D/g, "").slice(0, 8);
+      if (!digits) return "";
+
+      const firstHourRaw = digits.slice(0, 2);
+      const firstMinuteRaw = digits.slice(2, 4);
+      const secondHourRaw = digits.slice(4, 6);
+      const secondMinuteRaw = digits.slice(6, 8);
+
+      let result = firstHourRaw.length === 2 ? clampTimePart(firstHourRaw, 23) : firstHourRaw;
+
+      if (firstMinuteRaw.length > 0) {
+        const firstMinute = firstMinuteRaw.length === 2 ? clampTimePart(firstMinuteRaw, 59) : firstMinuteRaw;
+        result += `:${firstMinute}`;
+      }
+
+      if (secondHourRaw.length > 0) {
+        const secondHour = secondHourRaw.length === 2 ? clampTimePart(secondHourRaw, 23) : secondHourRaw;
+        result += ` - ${secondHour}`;
+      }
+
+      if (secondMinuteRaw.length > 0) {
+        const secondMinute = secondMinuteRaw.length === 2 ? clampTimePart(secondMinuteRaw, 59) : secondMinuteRaw;
+        result += `:${secondMinute}`;
+      }
+
+      return result;
+    }
+
+    function isoToRuDate(value) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
+      return match ? `${match[3]}/${match[2]}/${match[1]}` : (value || "");
+    }
+
+    function ruDateToIso(value) {
+      const digits = (value || "").replace(/\D/g, "").slice(0, 8);
+      if (digits.length !== 8) return "";
+      const day = digits.slice(0, 2);
+      const month = digits.slice(2, 4);
+      const year = digits.slice(4, 8);
+      return `${year}-${month}-${day}`;
+    }
+
+    function maskRuDate(value) {
+      const digits = (value || "").replace(/\D/g, "").slice(0, 8);
+      const parts = [];
+      if (digits.length > 0) parts.push(digits.slice(0, 2));
+      if (digits.length > 2) parts.push(digits.slice(2, 4));
+      if (digits.length > 4) parts.push(digits.slice(4, 8));
+      return parts.join("/");
+    }
+
+    const openDatePickers = new Set();
+    const monthNames = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+    const weekdayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+    function isoToDate(value) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
+      if (!match) return null;
+      return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    }
+
+    function dateToIso(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function closeOtherDatePickers(activePopover) {
+      openDatePickers.forEach((popover) => {
+        if (popover !== activePopover) popover.hidden = true;
+      });
+      openDatePickers.clear();
+      if (activePopover && !activePopover.hidden) openDatePickers.add(activePopover);
+    }
+
+    function attachRuDatePicker(input) {
+      const hidden = input.previousElementSibling;
+      const wrapper = document.createElement("span");
+      wrapper.className = "date-input-wrap";
+      input.parentNode.insertBefore(wrapper, input);
+      wrapper.appendChild(input);
+
+      const pickerButton = document.createElement("button");
+      pickerButton.type = "button";
+      pickerButton.className = "date-picker-button";
+      pickerButton.textContent = "...";
+      pickerButton.setAttribute("aria-label", "Выбрать дату из календаря");
+      pickerButton.setAttribute("aria-expanded", "false");
+
+      const popover = document.createElement("div");
+      popover.className = "date-picker-popover";
+      popover.hidden = true;
+      popover.setAttribute("role", "dialog");
+      popover.setAttribute("aria-label", "Календарь выбора даты");
+
+      wrapper.appendChild(pickerButton);
+      wrapper.appendChild(popover);
+
+      let visibleMonth = isoToDate(hidden && hidden.type === "hidden" ? hidden.value : "") || new Date();
+      visibleMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
+
+      const setIsoValue = (isoValue) => {
+        if (hidden && hidden.type === "hidden") {
+          hidden.value = isoValue || "";
+        }
+        input.value = isoToRuDate(isoValue || "");
+      };
+
+      const syncHiddenDate = () => {
+        input.value = maskRuDate(input.value);
+        const isoValue = ruDateToIso(input.value);
+        if (hidden && hidden.type === "hidden") {
+          hidden.value = isoValue;
+        }
+        const parsed = isoToDate(isoValue);
+        if (parsed) visibleMonth = new Date(parsed.getFullYear(), parsed.getMonth(), 1);
+      };
+
+      const closePicker = () => {
+        popover.hidden = true;
+        pickerButton.setAttribute("aria-expanded", "false");
+        openDatePickers.delete(popover);
+      };
+
+      const renderCalendar = () => {
+        const selectedIso = hidden && hidden.type === "hidden" ? hidden.value : ruDateToIso(input.value);
+        const todayIso = dateToIso(new Date());
+        const year = visibleMonth.getFullYear();
+        const month = visibleMonth.getMonth();
+        const firstDay = new Date(year, month, 1);
+        const mondayOffset = (firstDay.getDay() + 6) % 7;
+        const gridStart = new Date(year, month, 1 - mondayOffset);
+
+        popover.innerHTML = "";
+        const head = document.createElement("div");
+        head.className = "date-picker-head";
+
+        const prev = document.createElement("button");
+        prev.type = "button";
+        prev.className = "date-picker-nav";
+        prev.textContent = "<";
+        prev.setAttribute("aria-label", "Предыдущий месяц");
+
+        const title = document.createElement("div");
+        title.className = "date-picker-title";
+        title.textContent = `${monthNames[month]} ${year}`;
+
+        const next = document.createElement("button");
+        next.type = "button";
+        next.className = "date-picker-nav";
+        next.textContent = ">";
+        next.setAttribute("aria-label", "Следующий месяц");
+
+        head.appendChild(prev);
+        head.appendChild(title);
+        head.appendChild(next);
+        popover.appendChild(head);
+
+        const grid = document.createElement("div");
+        grid.className = "date-picker-grid";
+        weekdayNames.forEach((name) => {
+          const weekday = document.createElement("div");
+          weekday.className = "date-picker-weekday";
+          weekday.textContent = name;
+          grid.appendChild(weekday);
+        });
+
+        for (let offset = 0; offset < 42; offset += 1) {
+          const current = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + offset);
+          const currentIso = dateToIso(current);
+          const dayButton = document.createElement("button");
+          dayButton.type = "button";
+          dayButton.className = "date-picker-day";
+          if (current.getMonth() !== month) dayButton.classList.add("outside");
+          if (currentIso === todayIso) dayButton.classList.add("today");
+          if (currentIso === selectedIso) dayButton.classList.add("selected");
+          dayButton.textContent = String(current.getDate());
+          dayButton.setAttribute("aria-label", isoToRuDate(currentIso));
+          dayButton.addEventListener("click", () => {
+            setIsoValue(currentIso);
+            closePicker();
+            input.focus();
+          });
+          grid.appendChild(dayButton);
+        }
+
+        popover.appendChild(grid);
+        prev.addEventListener("click", () => {
+          visibleMonth = new Date(year, month - 1, 1);
+          renderCalendar();
+        });
+        next.addEventListener("click", () => {
+          visibleMonth = new Date(year, month + 1, 1);
+          renderCalendar();
+        });
+      };
+
+      const openPicker = () => {
+        syncHiddenDate();
+        renderCalendar();
+        popover.hidden = false;
+        pickerButton.setAttribute("aria-expanded", "true");
+        closeOtherDatePickers(popover);
+      };
+
+      if (hidden && hidden.type === "hidden") {
+        setIsoValue(hidden.value);
+      }
+
+      input.addEventListener("input", syncHiddenDate);
+      input.addEventListener("change", syncHiddenDate);
+      input.form?.addEventListener("submit", syncHiddenDate);
+      pickerButton.addEventListener("click", () => {
+        if (popover.hidden) {
+          openPicker();
+        } else {
+          closePicker();
+        }
+      });
+      document.addEventListener("click", (event) => {
+        if (!wrapper.contains(event.target)) closePicker();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closePicker();
+      });
+    }
+
+    document.querySelectorAll('input[data-date-picker="true"]').forEach(attachRuDatePicker);
+
+    function splitSystemsInput(value) {
+      return (value || "")
+        .split(/\n|\||,|;/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+    }
+
+    function attachSystemsEditor(editor) {
+      const field = editor.parentElement;
+      const hidden = field?.querySelector('input[data-systems-hidden]');
+      const list = editor.querySelector('[data-systems-token-list]');
+      const input = editor.querySelector('[data-systems-input]');
+      if (!hidden || !list || !input) return;
+
+      let systems = splitSystemsInput(hidden.value);
+
+      const syncHidden = () => {
+        hidden.value = systems.join(" | ");
+      };
+
+      const render = () => {
+        list.innerHTML = "";
+        systems.forEach((systemName, index) => {
+          const token = document.createElement("span");
+          token.className = "system-token";
+
+          const text = document.createElement("span");
+          text.textContent = systemName;
+          token.appendChild(text);
+
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "system-token-remove";
+          remove.textContent = "×";
+          remove.setAttribute("aria-label", `Удалить АС ${systemName}`);
+          remove.addEventListener("click", () => {
+            systems.splice(index, 1);
+            syncHidden();
+            render();
+            input.focus();
+          });
+          token.appendChild(remove);
+          list.appendChild(token);
+        });
+      };
+
+      const addSystems = (rawValue) => {
+        const nextSystems = splitSystemsInput(rawValue);
+        if (!nextSystems.length) return false;
+        nextSystems.forEach((systemName) => {
+          if (!systems.includes(systemName)) systems.push(systemName);
+        });
+        input.value = "";
+        syncHidden();
+        render();
+        return true;
+      };
+
+      editor.addEventListener("click", () => input.focus());
+      input.addEventListener("keydown", (event) => {
+        const isDelimiter = event.key === "Enter" || event.key === "Tab" || event.key === "|" || event.key === "," || event.key === ";";
+        if (!isDelimiter) {
+          if (event.key === "Backspace" && !input.value && systems.length) {
+            systems.pop();
+            syncHidden();
+            render();
+          }
+          return;
+        }
+
+        if (addSystems(input.value)) {
+          event.preventDefault();
+          return;
+        }
+
+        if (event.key !== "Tab") event.preventDefault();
+      });
+      input.addEventListener("input", () => {
+        if (/[\n|,;]/.test(input.value)) addSystems(input.value);
+      });
+      input.addEventListener("blur", () => {
+        addSystems(input.value);
+      });
+      input.form?.addEventListener("submit", () => {
+        addSystems(input.value);
+        syncHidden();
+      });
+
+      syncHidden();
+      render();
+    }
+
+    document.querySelectorAll('[data-systems-editor]').forEach(attachSystemsEditor);
+
+    document.querySelectorAll('input[data-time-mask="true"]').forEach((input) => {
+      input.addEventListener("input", () => {
+        input.value = maskTimeRange(input.value);
+      });
+      input.form?.addEventListener("submit", () => {
+        input.value = maskTimeRange(input.value);
+      });
+    });
+  </script>
+</body>
+</html>

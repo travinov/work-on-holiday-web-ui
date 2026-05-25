@@ -85,6 +85,8 @@ def write_sheet(writer: pd.ExcelWriter, sheet_name: str, title: str, subtitle: s
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Сборка единого файла отчетов по выходам в выходные")
     parser.add_argument("--db", default="survey_results.db", help="Путь к SQLite БД")
+    parser.add_argument("--date-from", help="Опционально: начало периода по плановой/фактической дате (YYYY-MM-DD)")
+    parser.add_argument("--date-to", help="Опционально: конец периода по плановой/фактической дате (YYYY-MM-DD)")
     parser.add_argument(
         "--employees-csv",
         default="data/employees_mock.csv",
@@ -112,10 +114,18 @@ def main() -> None:
     prepared_at = datetime.now()
     prepared_label = prepared_at.strftime("%d.%m.%Y %H:%M")
 
-    report_1_df = build_report_1(str(db_path), employees_csv=args.employees_csv)
-    report_2_df = build_report_2(str(db_path))
-    report_3_df = build_report_3(str(db_path))
-    report_4_df = build_report_4(str(db_path))
+    date_from = datetime.strptime(args.date_from, "%Y-%m-%d").date() if args.date_from else None
+    date_to = datetime.strptime(args.date_to, "%Y-%m-%d").date() if args.date_to else None
+
+    if (date_from is None) != (date_to is None):
+        raise ValueError("Нужно указать обе даты: --date-from и --date-to")
+    if date_from and date_to and date_from > date_to:
+        raise ValueError("date-from не может быть позже date-to")
+
+    report_1_df = build_report_1(str(db_path), date_from, date_to, employees_csv=args.employees_csv)
+    report_2_df = build_report_2(str(db_path), date_from, date_to)
+    report_3_df = build_report_3(str(db_path), date_from, date_to)
+    report_4_df = build_report_4(str(db_path), date_from, date_to)
 
     if args.output:
         output_path = Path(args.output)
@@ -129,14 +139,14 @@ def main() -> None:
         write_sheet(
             writer,
             sheet_name="Отчет 1",
-            title="Отчет 1 для руководства (заявки без фактического выхода)",
+            title="Отчет 1 для руководства (плановые заявки)",
             subtitle=f"Дата подготовки: {prepared_label}",
             report_df=report_1_df,
         )
         write_sheet(
             writer,
             sheet_name="Отчет 2",
-            title="Отчет 2 для заведения заявок (заявки без фактического выхода)",
+            title="Отчет 2 для заведения заявок (плановые заявки)",
             subtitle=f"Дата подготовки: {prepared_label}",
             report_df=report_2_df,
         )
