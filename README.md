@@ -156,12 +156,12 @@ sudo deploy/scripts/deploy-corporate-server.sh
 Скрипт использует production-настройки:
 
 - приложение запускается из текущей проектной папки;
-- БД хранится вне папки проекта: `/var/lib/work-on-holiday/survey_results.db`;
-- backup БД хранится вне папки проекта: `/var/backups/work-on-holiday`;
+- SQLite-файл БД хранится вне папки проекта: `/var/lib/work-on-holiday/survey_results.db`;
+- backup SQLite-файла БД хранится вне папки проекта: `/var/backups/work-on-holiday`;
 - приложение запускается на `127.0.0.1:8081`;
-- при повторном развертывании БД не перетирается, перед обновлением создается backup.
+- при повторном развертывании SQLite-файл БД не перетирается, перед обновлением создается backup.
 
-Важно: рабочую БД нельзя хранить внутри папки, которая заменяется содержимым ZIP. Поэтому production-скрипт выносит БД в `/var/lib/work-on-holiday`.
+Важно: рабочий SQLite-файл БД нельзя хранить внутри папки, которая заменяется содержимым ZIP. Поэтому production-скрипт выносит SQLite-файл БД в `/var/lib/work-on-holiday`.
 
 Проверка после deploy:
 
@@ -175,7 +175,7 @@ systemctl status work-on-holiday.service
 Без `sudo` можно развернуть приложение, если:
 
 - проект лежит в папке, доступной текущему пользователю;
-- БД и backup лежат в домашней директории пользователя;
+- SQLite-файл БД и backup лежат в домашней директории пользователя;
 - используется пользовательский `systemd --user` или ручной запуск процесса.
 
 Ограничение: без `sudo` нельзя создать системный сервис в `/etc/systemd/system`, создать пользователя `workholiday`, писать в `/opt`, `/var/lib`, `/var/backups` и гарантировать автозапуск после перезагрузки, если на сервере не включен user lingering.
@@ -224,7 +224,7 @@ NO_USER_SYSTEMD=1 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me' \
 - порт приложения;
 - имя systemd-сервиса;
 - папку приложения;
-- путь к БД;
+- путь к SQLite-файлу БД;
 - папку backup;
 - env-файл.
 
@@ -232,14 +232,14 @@ NO_USER_SYSTEMD=1 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me' \
 
 - service: `work-on-holiday`;
 - port: `8081`;
-- system DB: `/var/lib/work-on-holiday/survey_results.db`;
-- user DB: `$HOME/.local/share/work-on-holiday/survey_results.db`.
+- системный SQLite-файл БД: `/var/lib/work-on-holiday/survey_results.db`;
+- пользовательский SQLite-файл БД: `$HOME/.local/share/work-on-holiday/survey_results.db`.
 
-Для `RoleModel_helper` нужно использовать другие значения, например другой service name и другой порт, чтобы приложения не перезаписывали unit/env/БД друг друга.
+Для `RoleModel_helper` нужно использовать другие значения, например другой service name и другой порт, чтобы приложения не перезаписывали unit/env/SQLite-файлы БД друг друга.
 
 ### Альтернатива: развертывание с локальной машины на корпоративный сервер
 
-С локальной машины проект отправляется на сервер через SSH/rsync, а затем на сервере запускается безопасный deploy с backup БД:
+С локальной машины проект отправляется на сервер через SSH/rsync, а затем на сервере запускается безопасный deploy с backup SQLite-файла БД:
 
 ```bash
 DEPLOY_HOST=tsles-assai0001.esrt.sber.ru \
@@ -263,7 +263,7 @@ Remote-скрипт не копирует локальные данные:
 - `backups/`;
 - `venv/`.
 
-Серверная БД остается на сервере. При повторном deploy перед обновлением схемы создается backup серверной БД.
+SQLite-файл БД остается на сервере. При повторном deploy перед обновлением схемы создается backup SQLite-файла БД.
 
 ### Базовый серверный скрипт
 
@@ -278,7 +278,7 @@ sudo WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-server' deploy/scripts/dep
 - создает `venv`, если его еще нет;
 - устанавливает зависимости из `requirements.txt`;
 - при первом развертывании создает `survey_results.db`;
-- при повторном развертывании сначала делает backup существующей БД в `backups/`;
+- при повторном развертывании сначала делает backup существующего SQLite-файла БД в `backups/`;
 - применяет инициализацию/обновление схемы без удаления данных;
 - создает systemd service;
 - запускает или перезапускает приложение.

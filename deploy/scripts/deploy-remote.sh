@@ -13,7 +13,7 @@ Optional:
   DEPLOY_USER                           SSH user. Default: current local user.
   DEPLOY_PORT                           SSH port. Default: 22.
   DEPLOY_PATH                           App path on server. Default: /opt/work-on-holiday.
-  REMOTE_DB_PATH                        Server DB path. Default: $DEPLOY_PATH/survey_results.db.
+  REMOTE_DB_PATH                        Remote SQLite DB file path. Default: $DEPLOY_PATH/survey_results.db.
   REMOTE_BACKUP_DIR                     Server backup dir. Default: $DEPLOY_PATH/backups.
   REMOTE_SERVICE_NAME                   systemd service name. Default: work-on-holiday.
   REMOTE_RUN_USER                       Linux service user. Default: workholiday.
@@ -89,7 +89,7 @@ RSYNC_SSH="ssh -p $DEPLOY_PORT $SSH_OPTS"
 
 log "Target: $SSH_TARGET"
 log "Remote app path: $DEPLOY_PATH"
-log "Remote DB path: $REMOTE_DB_PATH"
+log "Remote SQLite DB file path: $REMOTE_DB_PATH"
 log "Remote backup dir: $REMOTE_BACKUP_DIR"
 
 log "Creating remote directory"
