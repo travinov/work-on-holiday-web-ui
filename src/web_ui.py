@@ -25,10 +25,10 @@ except ModuleNotFoundError:
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SRC_DIR = BASE_DIR / "src"
-DB_PATH = BASE_DIR / "survey_results.db"
 UPLOAD_DIR = BASE_DIR / "generated_exports"
 REPORTS_DIR = BASE_DIR / "reports"
 TEMPLATES_DIR = BASE_DIR / "templates"
+DB_PATH_ENV = "WORK_ON_HOLIDAY_DB_PATH"
 SUPERUSER_LOGIN_ENV = "WORK_ON_HOLIDAY_SUPERUSER_LOGIN"
 SUPERUSER_PASSWORD_ENV = "WORK_ON_HOLIDAY_SUPERUSER_PASSWORD"
 SECURE_COOKIES_ENV = "WORK_ON_HOLIDAY_SECURE_COOKIES"
@@ -42,6 +42,19 @@ TIME_RANGE_PATTERN = re.compile(r"^\s*(\d{1,2})[:.](\d{2})\s*-\s*(\d{1,2})[:.](\
 
 app = FastAPI(title="Work On Holiday - Web UI")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+def resolve_configured_path(env_name: str, default: Path) -> Path:
+    raw_value = os.getenv(env_name, "").strip()
+    if not raw_value:
+        return default
+    path = Path(raw_value).expanduser()
+    if path.is_absolute():
+        return path
+    return BASE_DIR / path
+
+
+DB_PATH = resolve_configured_path(DB_PATH_ENV, BASE_DIR / "survey_results.db")
 
 
 def get_db_connection() -> sqlite3.Connection:

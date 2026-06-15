@@ -19,6 +19,7 @@ Environment overrides:
   WORK_ON_HOLIDAY_SUPERUSER_LOGIN      Superuser login. Default: root.
   WORK_ON_HOLIDAY_SUPERUSER_PASSWORD   Required on first deploy unless env file already exists.
   WORK_ON_HOLIDAY_SECURE_COOKIES       Default: 1.
+  WORK_ON_HOLIDAY_DB_PATH              App DB path. Usually set by this script from DB_PATH.
   SKIP_SYSTEMD                         Set to 1 to skip systemd install/restart.
 
 Examples:
@@ -67,6 +68,16 @@ fail() {
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1"
+}
+
+ensure_env_key() {
+  local key="$1"
+  local value="$2"
+
+  if ! grep -q "^${key}=" "$ENV_FILE"; then
+    log "Adding $key to environment file"
+    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
 }
 
 backup_sqlite_db() {
@@ -152,10 +163,12 @@ if [[ ! -f "$ENV_FILE" ]]; then
 WORK_ON_HOLIDAY_SUPERUSER_LOGIN=$SUPERUSER_LOGIN
 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD=$WORK_ON_HOLIDAY_SUPERUSER_PASSWORD
 WORK_ON_HOLIDAY_SECURE_COOKIES=$SECURE_COOKIES
+WORK_ON_HOLIDAY_DB_PATH=$DB_PATH
 ENV
   chmod 600 "$ENV_FILE"
 else
   log "Environment file exists, keeping it unchanged: $ENV_FILE"
+  ensure_env_key "WORK_ON_HOLIDAY_DB_PATH" "$DB_PATH"
 fi
 
 log "Writing systemd unit: $SYSTEMD_UNIT"
