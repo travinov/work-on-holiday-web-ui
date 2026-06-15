@@ -15,6 +15,7 @@ Defaults:
   DEPLOY_PATH=apps/work-on-holiday
   REMOTE_DB_PATH=.local/share/work-on-holiday/survey_results.db
   REMOTE_BACKUP_DIR=.local/state/work-on-holiday/backups
+  REMOTE_HOST=0.0.0.0
   REMOTE_PORT=8081
   REMOTE_SERVICE_NAME=work-on-holiday
 
@@ -37,7 +38,7 @@ DEPLOY_PORT="${DEPLOY_PORT:-22}"
 DEPLOY_PATH="${DEPLOY_PATH:-apps/work-on-holiday}"
 REMOTE_DB_PATH="${REMOTE_DB_PATH:-.local/share/work-on-holiday/survey_results.db}"
 REMOTE_BACKUP_DIR="${REMOTE_BACKUP_DIR:-.local/state/work-on-holiday/backups}"
-REMOTE_HOST="${REMOTE_HOST:-127.0.0.1}"
+REMOTE_HOST="${REMOTE_HOST:-0.0.0.0}"
 REMOTE_PORT="${REMOTE_PORT:-8081}"
 REMOTE_SERVICE_NAME="${REMOTE_SERVICE_NAME:-work-on-holiday}"
 REMOTE_NO_USER_SYSTEMD="${REMOTE_NO_USER_SYSTEMD:-0}"

@@ -188,6 +188,7 @@ $HOME/.local/state/work-on-holiday/backups/survey_results-pre-update-YYYYMMDD-HH
 - сервер: `tsles-assai0001.esrt.sber.ru`;
 - SSH-пользователь: `CI09479675-lnx-travinov`;
 - удаленная папка проекта: `~/apps/work-on-holiday`;
+- bind host: `0.0.0.0`;
 - порт приложения: `8081`;
 - service name: `work-on-holiday`;
 - режим на сервере: no-sudo user deploy.
@@ -213,6 +214,12 @@ $HOME/.local/state/work-on-holiday/backups/survey_results-pre-update-YYYYMMDD-HH
 ```bash
 ssh CI09479675-lnx-travinov@tsles-assai0001.esrt.sber.ru \
   'curl -I http://127.0.0.1:8081/ && systemctl --user status work-on-holiday.service'
+```
+
+Проверка внешнего доступа с локального компьютера:
+
+```bash
+curl -I http://tsles-assai0001.esrt.sber.ru:8081/
 ```
 
 Если `systemctl --user` на сервере недоступен:
