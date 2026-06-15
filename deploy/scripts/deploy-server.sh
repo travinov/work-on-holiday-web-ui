@@ -15,7 +15,7 @@ Environment overrides:
   RUN_USER                             Linux user for systemd service. Default: workholiday.
   RUN_GROUP                            Linux group for systemd service. Default: $RUN_USER.
   HOST                                 Uvicorn bind host. Default: 127.0.0.1.
-  PORT                                 Uvicorn bind port. Default: 8080.
+  PORT                                 Uvicorn bind port. Default: 8081.
   WORK_ON_HOLIDAY_SUPERUSER_LOGIN      Superuser login. Default: root.
   WORK_ON_HOLIDAY_SUPERUSER_PASSWORD   Required on first deploy unless env file already exists.
   WORK_ON_HOLIDAY_SECURE_COOKIES       Default: 1.
@@ -43,7 +43,7 @@ SERVICE_NAME="${SERVICE_NAME:-work-on-holiday}"
 RUN_USER="${RUN_USER:-workholiday}"
 RUN_GROUP="${RUN_GROUP:-$RUN_USER}"
 HOST="${HOST:-127.0.0.1}"
-PORT="${PORT:-8080}"
+PORT="${PORT:-8081}"
 ENV_DIR="${ENV_DIR:-/etc/work-on-holiday}"
 ENV_FILE="${ENV_FILE:-$ENV_DIR/work-on-holiday.env}"
 SYSTEMD_UNIT="${SYSTEMD_UNIT:-/etc/systemd/system/$SERVICE_NAME.service}"

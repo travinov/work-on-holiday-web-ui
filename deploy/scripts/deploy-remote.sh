@@ -18,17 +18,17 @@ Optional:
   REMOTE_SERVICE_NAME                   systemd service name. Default: work-on-holiday.
   REMOTE_RUN_USER                       Linux service user. Default: workholiday.
   REMOTE_HOST                           Uvicorn bind host on server. Default: 127.0.0.1.
-  REMOTE_PORT                           Uvicorn bind port on server. Default: 8080.
+  REMOTE_PORT                           Uvicorn bind port on server. Default: 8081.
   SSH_OPTS                              Extra ssh options.
   RSYNC_OPTS                            Extra rsync options.
   REMOTE_SKIP_SYSTEMD                   Set to 1 to skip systemd setup on server.
 
 Examples:
-  DEPLOY_HOST=tsles-assai.example.corp \
+  DEPLOY_HOST=tsles-assai0001.esrt.sber.ru \
     WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me' \
     deploy/scripts/deploy-remote.sh
 
-  DEPLOY_USER=appadmin DEPLOY_HOST=tsles-assai.example.corp DEPLOY_PATH=/opt/work-on-holiday \
+  DEPLOY_USER=CI09479675-lnx-travinov DEPLOY_HOST=tsles-assai0001.esrt.sber.ru DEPLOY_PATH=/opt/work-on-holiday \
     WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me' \
     deploy/scripts/deploy-remote.sh
 USAGE
@@ -51,7 +51,7 @@ REMOTE_BACKUP_DIR="${REMOTE_BACKUP_DIR:-$DEPLOY_PATH/backups}"
 REMOTE_SERVICE_NAME="${REMOTE_SERVICE_NAME:-work-on-holiday}"
 REMOTE_RUN_USER="${REMOTE_RUN_USER:-workholiday}"
 REMOTE_HOST="${REMOTE_HOST:-127.0.0.1}"
-REMOTE_PORT="${REMOTE_PORT:-8080}"
+REMOTE_PORT="${REMOTE_PORT:-8081}"
 REMOTE_SKIP_SYSTEMD="${REMOTE_SKIP_SYSTEMD:-0}"
 SSH_OPTS="${SSH_OPTS:-}"
 RSYNC_OPTS="${RSYNC_OPTS:-}"
@@ -73,7 +73,7 @@ shell_quote() {
   printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
 }
 
-[[ -n "$DEPLOY_HOST" ]] || fail "DEPLOY_HOST is required. Example: DEPLOY_HOST=tsles-assai.example.corp"
+[[ -n "$DEPLOY_HOST" ]] || fail "DEPLOY_HOST is required. Example: DEPLOY_HOST=tsles-assai0001.esrt.sber.ru"
 require_cmd ssh
 require_cmd rsync
 

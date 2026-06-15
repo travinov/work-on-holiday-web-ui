@@ -1,6 +1,6 @@
 # Work on Holiday: серверный HTTPS с self-signed сертификатом
 
-Этот вариант оставляет FastAPI на `127.0.0.1:8080` и ставит перед ним `nginx` на `443`.
+Этот вариант оставляет FastAPI на `127.0.0.1:8081` и ставит перед ним `nginx` на `443`.
 Локальный HTTP-режим разработки не меняется.
 
 ## Что получится
@@ -8,7 +8,7 @@
 ```text
 https://SERVER_IP
   -> nginx:443, self-signed TLS
-  -> http://127.0.0.1:8080
+  -> http://127.0.0.1:8081
   -> FastAPI
 ```
 
@@ -58,7 +58,7 @@ sudo deploy/scripts/generate-self-signed-cert.sh work-holiday.internal 10.10.10.
 
 ```bash
 cd /opt/work-on-holiday
-sudo WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-server' deploy/scripts/deploy-server.sh
+sudo PORT=8081 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-server' deploy/scripts/deploy-server.sh
 ```
 
 Если файл `/etc/work-on-holiday/work-on-holiday.env` уже существует, deploy-скрипт не перезаписывает его и не меняет пароль.
@@ -82,7 +82,7 @@ sudo systemctl status work-on-holiday.service
 Проверить внутренний HTTP:
 
 ```bash
-curl -sS http://127.0.0.1:8080/ -o /tmp/work-on-holiday.html -w 'http:%{http_code}\n'
+curl -sS http://127.0.0.1:8081/ -o /tmp/work-on-holiday.html -w 'http:%{http_code}\n'
 ```
 
 ## 4. Установить nginx HTTPS proxy

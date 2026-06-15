@@ -130,16 +130,17 @@ http://127.0.0.1:8080/
 С локальной машины проект отправляется на сервер через SSH/rsync, а затем на сервере запускается безопасный deploy с backup БД:
 
 ```bash
-DEPLOY_HOST=tsles-assai.example.corp \
-DEPLOY_USER=<ssh-user> \
+DEPLOY_HOST=tsles-assai0001.esrt.sber.ru \
+DEPLOY_USER=CI09479675-lnx-travinov \
 DEPLOY_PATH=/opt/work-on-holiday \
 REMOTE_DB_PATH=/var/lib/work-on-holiday/survey_results.db \
 REMOTE_BACKUP_DIR=/var/backups/work-on-holiday \
+REMOTE_PORT=8081 \
 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-first-deploy' \
 deploy/scripts/deploy-remote.sh
 ```
 
-`DEPLOY_HOST` нужно заменить на полный адрес корпоративного сервера `tsles-assai...`.
+Эту команду нужно запускать с корпоративной машины, где есть SSH-доступ к `tsles-assai0001.esrt.sber.ru`.
 
 Remote-скрипт не копирует локальные данные:
 
@@ -176,6 +177,7 @@ sudo WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-server' deploy/scripts/dep
 sudo APP_DIR=/opt/work-on-holiday \
   DB_PATH=/var/lib/work-on-holiday/survey_results.db \
   BACKUP_DIR=/var/backups/work-on-holiday \
+  PORT=8081 \
   WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-server' \
   deploy/scripts/deploy-server.sh
 ```

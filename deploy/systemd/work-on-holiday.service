@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 WorkingDirectory=/opt/work-on-holiday
 EnvironmentFile=/etc/work-on-holiday/work-on-holiday.env
-ExecStart=/opt/work-on-holiday/venv/bin/python -m uvicorn src.web_ui:app --host 127.0.0.1 --port 8080 --proxy-headers --forwarded-allow-ips=127.0.0.1
+ExecStart=/opt/work-on-holiday/venv/bin/python -m uvicorn src.web_ui:app --host 127.0.0.1 --port 8081 --proxy-headers --forwarded-allow-ips=127.0.0.1
 Restart=always
 RestartSec=3
 User=workholiday
