@@ -125,14 +125,21 @@ http://127.0.0.1:8080/
 
 ## Развертывание на сервере
 
-### Рекомендуемая схема через ZIP
+### Рекомендуемая схема: ZIP локально -> deploy на сервер
 
 Схема развертывания:
 
-1. Скачать ZIP из GitHub.
-2. Распаковать ZIP и обновить проектную папку на сервере.
-3. Открыть терминал в проектной папке.
-4. Запустить deploy-скрипт.
+1. Скачать ZIP из GitHub на локальный корпоративный компьютер.
+2. Разархивировать ZIP в локальную рабочую папку проекта с заменой файлов.
+3. Открыть терминал в локальной папке проекта.
+4. Запустить deploy-скрипт из локальной папки.
+5. Скрипт сам скопирует проект на сервер по SSH/rsync и запустит no-sudo deploy на сервере.
+
+На локальном компьютере должны быть доступны команды `ssh` и `rsync`, а SSH-доступ должен работать:
+
+```bash
+ssh CI09479675-lnx-travinov@tsles-assai0001.esrt.sber.ru
+```
 
 ZIP:
 
@@ -140,82 +147,59 @@ ZIP:
 https://codeload.github.com/travinov/work-on-holiday-web-ui/zip/refs/heads/main
 ```
 
-Первое развертывание:
-
-```bash
-sudo WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-first-deploy' \
-  deploy/scripts/deploy-corporate-server.sh
-```
-
-Повторное развертывание:
-
-```bash
-sudo deploy/scripts/deploy-corporate-server.sh
-```
-
-Скрипт использует production-настройки:
-
-- приложение запускается из текущей проектной папки;
-- SQLite-файл БД хранится вне папки проекта: `/var/lib/work-on-holiday/survey_results.db`;
-- backup SQLite-файла БД хранится вне папки проекта: `/var/backups/work-on-holiday`;
-- приложение запускается на `127.0.0.1:8081`;
-- при повторном развертывании SQLite-файл БД не перетирается, перед обновлением создается backup.
-
-Важно: рабочий SQLite-файл БД нельзя хранить внутри папки, которая заменяется содержимым ZIP. Поэтому production-скрипт выносит SQLite-файл БД в `/var/lib/work-on-holiday`.
-
-Проверка после deploy:
-
-```bash
-curl -I http://127.0.0.1:8081/
-systemctl status work-on-holiday.service
-```
-
-### Развертывание без sudo
-
-Без `sudo` можно развернуть приложение, если:
-
-- проект лежит в папке, доступной текущему пользователю;
-- SQLite-файл БД и backup лежат в домашней директории пользователя;
-- используется пользовательский `systemd --user` или ручной запуск процесса.
-
-Ограничение: без `sudo` нельзя создать системный сервис в `/etc/systemd/system`, создать пользователя `workholiday`, писать в `/opt`, `/var/lib`, `/var/backups` и гарантировать автозапуск после перезагрузки, если на сервере не включен user lingering.
-
-Первое no-sudo развертывание из папки проекта:
+Первое развертывание из локальной папки проекта:
 
 ```bash
 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-first-deploy' \
-  deploy/scripts/deploy-user-server.sh
+  deploy/scripts/deploy-to-corporate-server.sh
 ```
 
-Повторное no-sudo развертывание:
+Повторные обновления из локальной папки проекта:
 
 ```bash
-deploy/scripts/deploy-user-server.sh
+deploy/scripts/deploy-to-corporate-server.sh
 ```
 
-No-sudo режим использует пути:
+Скрипт использует настройки:
+
+- сервер: `tsles-assai0001.esrt.sber.ru`;
+- SSH-пользователь: `CI09479675-lnx-travinov`;
+- удаленная папка проекта: `~/apps/work-on-holiday`;
+- порт приложения: `8081`;
+- service name: `work-on-holiday`;
+- режим на сервере: no-sudo user deploy.
+
+Скрипт не копирует локальные runtime-данные:
+
+- `survey_results.db`;
+- `reports/`;
+- `generated_exports/`;
+- `restore_points/`;
+- `backups/`;
+- `venv/`.
+
+На сервере SQLite-файл БД хранится вне папки проекта:
 
 - БД: `$HOME/.local/share/work-on-holiday/survey_results.db`;
 - backup: `$HOME/.local/state/work-on-holiday/backups`;
 - env-файл: `$HOME/.config/work-on-holiday/work-on-holiday.env`;
-- user systemd unit: `$HOME/.config/systemd/user/work-on-holiday.service`;
-- порт: `8081`.
+- user systemd unit: `$HOME/.config/systemd/user/work-on-holiday.service`.
 
-Проверка:
-
-```bash
-curl -I http://127.0.0.1:8081/
-systemctl --user status work-on-holiday.service
-```
-
-Если `systemctl --user` недоступен:
+Проверка с локального компьютера через SSH:
 
 ```bash
-NO_USER_SYSTEMD=1 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me' \
-  deploy/scripts/deploy-user-server.sh
+ssh CI09479675-lnx-travinov@tsles-assai0001.esrt.sber.ru \
+  'curl -I http://127.0.0.1:8081/ && systemctl --user status work-on-holiday.service'
 ```
 
-Скрипт выведет команду для ручного запуска `uvicorn`.
+Если `systemctl --user` на сервере недоступен:
+
+```bash
+REMOTE_NO_USER_SYSTEMD=1 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me' \
+  deploy/scripts/deploy-to-corporate-server.sh
+```
+
+Скрипт выполнит установку и выведет команду для ручного запуска `uvicorn` на сервере.
 
 ### Несколько проектов на одном сервере
 
