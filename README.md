@@ -154,9 +154,10 @@ https://codeload.github.com/travinov/work-on-holiday-web-ui/zip/refs/heads/main
 Использовать только один раз, когда на сервере еще нет SQLite-файла БД и env-файла приложения.
 
 ```bash
-WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-first-deploy' \
-  deploy/scripts/install-to-corporate-server.sh
+deploy/scripts/install-to-corporate-server.sh
 ```
+
+Скрипт покажет логин суперпользователя и попросит ввести секрет скрытым вводом в терминале.
 
 Скрипт защищает от случайной перезаписи: если на сервере уже есть БД или env-файл, он остановится и предложит использовать скрипт обновления.
 
@@ -220,11 +221,10 @@ ssh CI09479675-lnx-travinov@tsles-assai0001.esrt.sber.ru \
 REMOTE_NO_USER_SYSTEMD=1 deploy/scripts/update-corporate-server.sh
 ```
 
-Для первичной установки в этом режиме пароль суперпользователя также обязателен:
+Для первичной установки в этом режиме скрипт также запросит секрет интерактивно:
 
 ```bash
-REMOTE_NO_USER_SYSTEMD=1 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-first-deploy' \
-  deploy/scripts/install-to-corporate-server.sh
+REMOTE_NO_USER_SYSTEMD=1 deploy/scripts/install-to-corporate-server.sh
 ```
 
 Скрипт выполнит установку и выведет команду для ручного запуска `uvicorn` на сервере.

@@ -15,13 +15,13 @@ Defaults:
   DEPLOY_PATH=apps/work-on-holiday
   REMOTE_PORT=8081
   REMOTE_SERVICE_NAME=work-on-holiday
-
-Required:
-  WORK_ON_HOLIDAY_SUPERUSER_PASSWORD
+  WORK_ON_HOLIDAY_SUPERUSER_LOGIN=root
 
 Command:
-  WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-first-deploy' \
-    deploy/scripts/install-to-corporate-server.sh
+  deploy/scripts/install-to-corporate-server.sh
+
+The script prompts for the superuser secret if it is not already provided in
+the environment.
 USAGE
 }
 
@@ -63,7 +63,19 @@ shell_quote() {
   printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
 }
 
-[[ -n "${WORK_ON_HOLIDAY_SUPERUSER_PASSWORD:-}" ]] || fail "WORK_ON_HOLIDAY_SUPERUSER_PASSWORD is required for initial install"
+SUPERUSER_SECRET="${WORK_ON_HOLIDAY_SUPERUSER_PASSWORD:-}"
+if [[ -z "$SUPERUSER_SECRET" ]]; then
+  if [[ -t 0 ]]; then
+    printf 'Superuser login: %s\n' "${WORK_ON_HOLIDAY_SUPERUSER_LOGIN:-root}"
+    printf 'Enter superuser secret: '
+    IFS= read -r -s SUPERUSER_SECRET
+    printf '\n'
+  else
+    fail "Superuser secret is required for initial install"
+  fi
+fi
+[[ -n "$SUPERUSER_SECRET" ]] || fail "Superuser secret cannot be empty"
+
 require_cmd ssh
 require_cmd rsync
 
@@ -112,7 +124,7 @@ REMOTE_ENV=(
   "PORT=$(shell_quote "$REMOTE_PORT")"
   "SERVICE_NAME=$(shell_quote "$REMOTE_SERVICE_NAME")"
   "NO_USER_SYSTEMD=$(shell_quote "$REMOTE_NO_USER_SYSTEMD")"
-  "WORK_ON_HOLIDAY_SUPERUSER_PASSWORD=$(shell_quote "$WORK_ON_HOLIDAY_SUPERUSER_PASSWORD")"
+  "WORK_ON_HOLIDAY_SUPERUSER_PASSWORD=$(shell_quote "$SUPERUSER_SECRET")"
 )
 
 if [[ -n "${WORK_ON_HOLIDAY_SUPERUSER_LOGIN:-}" ]]; then
