@@ -52,17 +52,27 @@ sudo deploy/scripts/generate-self-signed-cert.sh 10.10.10.25 10.10.10.25 /etc/ss
 sudo deploy/scripts/generate-self-signed-cert.sh work-holiday.internal 10.10.10.25 /etc/ssl/work-on-holiday
 ```
 
-## 3. Установить systemd service
+## 3. Установить приложение и systemd service
 
-Перед установкой заменить пароль суперпользователя в `deploy/systemd/work-on-holiday.service`:
-
-```ini
-Environment=WORK_ON_HOLIDAY_SUPERUSER_PASSWORD=change-me-on-server
-```
-
-Установить сервис:
+Основной вариант - использовать deploy-скрипт. На первом запуске он создаст БД, на повторных запусках сделает backup существующей БД перед обновлением схемы:
 
 ```bash
+cd /opt/work-on-holiday
+sudo WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-server' deploy/scripts/deploy-server.sh
+```
+
+Если файл `/etc/work-on-holiday/work-on-holiday.env` уже существует, deploy-скрипт не перезаписывает его и не меняет пароль.
+
+Ручной вариант:
+
+```bash
+sudo mkdir -p /etc/work-on-holiday
+sudo install -m 600 /dev/null /etc/work-on-holiday/work-on-holiday.env
+sudo sh -c 'cat > /etc/work-on-holiday/work-on-holiday.env' <<'ENV'
+WORK_ON_HOLIDAY_SUPERUSER_LOGIN=root
+WORK_ON_HOLIDAY_SUPERUSER_PASSWORD=change-me-on-server
+WORK_ON_HOLIDAY_SECURE_COOKIES=1
+ENV
 sudo cp deploy/systemd/work-on-holiday.service /etc/systemd/system/work-on-holiday.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now work-on-holiday.service

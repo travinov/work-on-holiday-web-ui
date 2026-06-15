@@ -123,6 +123,71 @@ http://127.0.0.1:8080/
 - закрытие приема заявок и закрытие ввода факта по периоду;
 - формирование общего Excel-файла с отчетами 1-4 за выбранную неделю.
 
+## Развертывание на сервере
+
+### Развертывание с локальной машины на корпоративный сервер
+
+С локальной машины проект отправляется на сервер через SSH/rsync, а затем на сервере запускается безопасный deploy с backup БД:
+
+```bash
+DEPLOY_HOST=tsles-assai.example.corp \
+DEPLOY_USER=<ssh-user> \
+DEPLOY_PATH=/opt/work-on-holiday \
+REMOTE_DB_PATH=/var/lib/work-on-holiday/survey_results.db \
+REMOTE_BACKUP_DIR=/var/backups/work-on-holiday \
+WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-first-deploy' \
+deploy/scripts/deploy-remote.sh
+```
+
+`DEPLOY_HOST` нужно заменить на полный адрес корпоративного сервера `tsles-assai...`.
+
+Remote-скрипт не копирует локальные данные:
+
+- `survey_results.db`;
+- `reports/`;
+- `generated_exports/`;
+- `restore_points/`;
+- `backups/`;
+- `venv/`.
+
+Серверная БД остается на сервере. При повторном deploy перед обновлением схемы создается backup серверной БД.
+
+### Развертывание уже внутри сервера
+
+Если проект уже находится на сервере, основной скрипт:
+
+```bash
+sudo WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-server' deploy/scripts/deploy-server.sh
+```
+
+Что делает скрипт:
+
+- создает `venv`, если его еще нет;
+- устанавливает зависимости из `requirements.txt`;
+- при первом развертывании создает `survey_results.db`;
+- при повторном развертывании сначала делает backup существующей БД в `backups/`;
+- применяет инициализацию/обновление схемы без удаления данных;
+- создает systemd service;
+- запускает или перезапускает приложение.
+
+Пример с явными путями:
+
+```bash
+sudo APP_DIR=/opt/work-on-holiday \
+  DB_PATH=/var/lib/work-on-holiday/survey_results.db \
+  BACKUP_DIR=/var/backups/work-on-holiday \
+  WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-server' \
+  deploy/scripts/deploy-server.sh
+```
+
+Для проверки без установки systemd:
+
+```bash
+SKIP_SYSTEMD=1 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='local-test' deploy/scripts/deploy-server.sh
+```
+
+HTTPS с self-signed сертификатом описан в `deploy/HTTPS_SELF_SIGNED.md`.
+
 ## Отчеты
 
 Общий Excel-файл:
