@@ -3,11 +3,11 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Deploy Work on Holiday from the local extracted ZIP folder to the corporate server.
+Initial install of Work on Holiday from the local extracted ZIP folder to the corporate server.
 
 Run this script on the local corporate workstation from the project root.
-It copies the current local folder to the server over SSH/rsync and runs no-sudo
-user deployment on the server.
+It refuses to continue if the remote SQLite DB or env file already exists.
+Use update-corporate-server.sh for repeat deployments.
 
 Defaults:
   DEPLOY_HOST=tsles-assai0001.esrt.sber.ru
@@ -16,15 +16,12 @@ Defaults:
   REMOTE_PORT=8081
   REMOTE_SERVICE_NAME=work-on-holiday
 
-Required on first deploy:
+Required:
   WORK_ON_HOLIDAY_SUPERUSER_PASSWORD
 
-First deploy:
+Command:
   WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-first-deploy' \
-    deploy/scripts/deploy-to-corporate-server.sh
-
-Repeat deploy:
-  deploy/scripts/deploy-to-corporate-server.sh
+    deploy/scripts/install-to-corporate-server.sh
 USAGE
 }
 
@@ -44,15 +41,17 @@ REMOTE_HOST="${REMOTE_HOST:-127.0.0.1}"
 REMOTE_PORT="${REMOTE_PORT:-8081}"
 REMOTE_SERVICE_NAME="${REMOTE_SERVICE_NAME:-work-on-holiday}"
 REMOTE_NO_USER_SYSTEMD="${REMOTE_NO_USER_SYSTEMD:-0}"
+REMOTE_DB_PATH="${REMOTE_DB_PATH:-.local/share/work-on-holiday/survey_results.db}"
+REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.config/work-on-holiday/work-on-holiday.env}"
 SSH_OPTS="${SSH_OPTS:-}"
 RSYNC_OPTS="${RSYNC_OPTS:-}"
 
 log() {
-  printf '[corp-deploy] %s\n' "$*"
+  printf '[install] %s\n' "$*"
 }
 
 fail() {
-  printf '[corp-deploy][error] %s\n' "$*" >&2
+  printf '[install][error] %s\n' "$*" >&2
   exit 1
 }
 
@@ -64,6 +63,7 @@ shell_quote() {
   printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
 }
 
+[[ -n "${WORK_ON_HOLIDAY_SUPERUSER_PASSWORD:-}" ]] || fail "WORK_ON_HOLIDAY_SUPERUSER_PASSWORD is required for initial install"
 require_cmd ssh
 require_cmd rsync
 
@@ -83,6 +83,10 @@ RSYNC_SSH="ssh -p $DEPLOY_PORT $SSH_OPTS"
 log "Target: $SSH_TARGET"
 log "Remote project path: ~/$DEPLOY_PATH"
 log "Remote app port: $REMOTE_PORT"
+
+log "Checking that this is a first install"
+"${SSH_BASE[@]}" "$SSH_TARGET" \
+  "db=\$HOME/$(shell_quote "$REMOTE_DB_PATH"); env=\$HOME/$(shell_quote "$REMOTE_ENV_FILE"); if [ -e \"\$db\" ] || [ -e \"\$env\" ]; then echo 'Remote DB or env file already exists. Use update-corporate-server.sh.' >&2; exit 10; fi"
 
 log "Creating remote project directory"
 "${SSH_BASE[@]}" "$SSH_TARGET" "mkdir -p $(shell_quote "$DEPLOY_PATH")"
@@ -108,20 +112,18 @@ REMOTE_ENV=(
   "PORT=$(shell_quote "$REMOTE_PORT")"
   "SERVICE_NAME=$(shell_quote "$REMOTE_SERVICE_NAME")"
   "NO_USER_SYSTEMD=$(shell_quote "$REMOTE_NO_USER_SYSTEMD")"
+  "WORK_ON_HOLIDAY_SUPERUSER_PASSWORD=$(shell_quote "$WORK_ON_HOLIDAY_SUPERUSER_PASSWORD")"
 )
 
 if [[ -n "${WORK_ON_HOLIDAY_SUPERUSER_LOGIN:-}" ]]; then
   REMOTE_ENV+=("WORK_ON_HOLIDAY_SUPERUSER_LOGIN=$(shell_quote "$WORK_ON_HOLIDAY_SUPERUSER_LOGIN")")
 fi
-if [[ -n "${WORK_ON_HOLIDAY_SUPERUSER_PASSWORD:-}" ]]; then
-  REMOTE_ENV+=("WORK_ON_HOLIDAY_SUPERUSER_PASSWORD=$(shell_quote "$WORK_ON_HOLIDAY_SUPERUSER_PASSWORD")")
-fi
 if [[ -n "${WORK_ON_HOLIDAY_SECURE_COOKIES:-}" ]]; then
   REMOTE_ENV+=("WORK_ON_HOLIDAY_SECURE_COOKIES=$(shell_quote "$WORK_ON_HOLIDAY_SECURE_COOKIES")")
 fi
 
-log "Running no-sudo user deploy on server"
+log "Running first no-sudo user deploy on server"
 "${SSH_BASE[@]}" "$SSH_TARGET" "cd $(shell_quote "$DEPLOY_PATH") && ${REMOTE_ENV[*]} deploy/scripts/deploy-user-server.sh"
 
-log "Deploy complete"
+log "Initial install complete"
 log "Server-local check: ssh $SSH_TARGET 'curl -I http://127.0.0.1:$REMOTE_PORT/'"

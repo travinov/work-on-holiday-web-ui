@@ -132,7 +132,9 @@ http://127.0.0.1:8080/
 1. Скачать ZIP из GitHub на локальный корпоративный компьютер.
 2. Разархивировать ZIP в локальную рабочую папку проекта с заменой файлов.
 3. Открыть терминал в локальной папке проекта.
-4. Запустить deploy-скрипт из локальной папки.
+4. Запустить один из двух deploy-скриптов:
+   - `install-to-corporate-server.sh` — только для первичной установки;
+   - `update-corporate-server.sh` — для повторных обновлений с сохранением данных.
 5. Скрипт сам скопирует проект на сервер по SSH/rsync и запустит no-sudo deploy на сервере.
 
 На локальном компьютере должны быть доступны команды `ssh` и `rsync`, а SSH-доступ должен работать:
@@ -147,20 +149,40 @@ ZIP:
 https://codeload.github.com/travinov/work-on-holiday-web-ui/zip/refs/heads/main
 ```
 
-Первое развертывание из локальной папки проекта:
+#### Первичная установка
+
+Использовать только один раз, когда на сервере еще нет SQLite-файла БД и env-файла приложения.
 
 ```bash
 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-first-deploy' \
-  deploy/scripts/deploy-to-corporate-server.sh
+  deploy/scripts/install-to-corporate-server.sh
 ```
 
-Повторные обновления из локальной папки проекта:
+Скрипт защищает от случайной перезаписи: если на сервере уже есть БД или env-файл, он остановится и предложит использовать скрипт обновления.
+
+#### Повторное обновление с сохранением данных
+
+Использовать для всех последующих релизов.
 
 ```bash
-deploy/scripts/deploy-to-corporate-server.sh
+deploy/scripts/update-corporate-server.sh
 ```
 
-Скрипт использует настройки:
+Перед копированием новой версии и применением возможных изменений схемы БД скрипт создает SQL-dump текущего SQLite-файла БД на сервере:
+
+```text
+$HOME/.local/state/work-on-holiday/backups/survey_results-pre-update-YYYYMMDD-HHMMSS.sql
+```
+
+После dump скрипт:
+
+- копирует новую версию проекта в `~/apps/work-on-holiday`;
+- не копирует локальные runtime-данные;
+- запускает серверный no-sudo deploy;
+- применяет инициализацию/обновление схемы без удаления данных;
+- перезапускает user systemd service `work-on-holiday`.
+
+Скрипты используют настройки:
 
 - сервер: `tsles-assai0001.esrt.sber.ru`;
 - SSH-пользователь: `CI09479675-lnx-travinov`;
@@ -169,7 +191,7 @@ deploy/scripts/deploy-to-corporate-server.sh
 - service name: `work-on-holiday`;
 - режим на сервере: no-sudo user deploy.
 
-Скрипт не копирует локальные runtime-данные:
+Скрипты не копируют локальные runtime-данные:
 
 - `survey_results.db`;
 - `reports/`;
@@ -181,7 +203,7 @@ deploy/scripts/deploy-to-corporate-server.sh
 На сервере SQLite-файл БД хранится вне папки проекта:
 
 - БД: `$HOME/.local/share/work-on-holiday/survey_results.db`;
-- backup: `$HOME/.local/state/work-on-holiday/backups`;
+- backup и SQL-dump: `$HOME/.local/state/work-on-holiday/backups`;
 - env-файл: `$HOME/.config/work-on-holiday/work-on-holiday.env`;
 - user systemd unit: `$HOME/.config/systemd/user/work-on-holiday.service`.
 
@@ -195,8 +217,14 @@ ssh CI09479675-lnx-travinov@tsles-assai0001.esrt.sber.ru \
 Если `systemctl --user` на сервере недоступен:
 
 ```bash
-REMOTE_NO_USER_SYSTEMD=1 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me' \
-  deploy/scripts/deploy-to-corporate-server.sh
+REMOTE_NO_USER_SYSTEMD=1 deploy/scripts/update-corporate-server.sh
+```
+
+Для первичной установки в этом режиме пароль суперпользователя также обязателен:
+
+```bash
+REMOTE_NO_USER_SYSTEMD=1 WORK_ON_HOLIDAY_SUPERUSER_PASSWORD='change-me-on-first-deploy' \
+  deploy/scripts/install-to-corporate-server.sh
 ```
 
 Скрипт выполнит установку и выведет команду для ручного запуска `uvicorn` на сервере.
