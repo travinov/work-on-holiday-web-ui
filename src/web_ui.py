@@ -296,6 +296,35 @@ def resolve_employee_by_name(conn: sqlite3.Connection, full_name: str) -> dict[s
     return {"employee_key": row["full_name_key"], "full_name": row["full_name"]}
 
 
+def register_employee_directory_entry(conn: sqlite3.Connection, full_name: str) -> dict[str, str]:
+    full_name_display = " ".join(full_name.strip().split())
+    full_name_key = normalize_name_key(full_name_display)
+    if not full_name_display or not full_name_key:
+        raise ValueError("Укажите ФИО")
+
+    now = datetime.now().isoformat(timespec="seconds")
+    conn.execute(
+        """
+        INSERT INTO app_employee_directory (
+            full_name_key,
+            full_name,
+            work_email,
+            local_phone,
+            mobile_phone,
+            position_short_name,
+            grade_num,
+            created_at,
+            updated_at
+        ) VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?)
+        ON CONFLICT(full_name_key) DO UPDATE SET
+            full_name = excluded.full_name,
+            updated_at = excluded.updated_at;
+        """,
+        (full_name_key, full_name_display, now, now),
+    )
+    return {"employee_key": full_name_key, "full_name": full_name_display}
+
+
 def upsert_employee_token(conn: sqlite3.Connection, full_name_key: str, token: str, reissued: bool = False) -> None:
     now = datetime.now().isoformat(timespec="seconds")
     token_hash = hash_employee_token(token)
@@ -1532,7 +1561,9 @@ def employee_login(
         ensure_app_tables(conn)
         employee = resolve_employee_by_name(conn, full_name)
         if not employee:
-            return redirect_with_message("/employee", "Сотрудник с таким ФИО не найден", "error")
+            employee = register_employee_directory_entry(conn, full_name)
+            upsert_employee_grade_12_plus(conn, employee["employee_key"], grade_12_plus_flag)
+            conn.commit()
         profile = get_employee_profile(conn, employee["employee_key"])
         if not is_employee_profile_active(profile):
             if profile.get("employee_status") == "blocked":

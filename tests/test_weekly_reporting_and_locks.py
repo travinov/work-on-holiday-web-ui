@@ -744,6 +744,65 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIsNotNone(token_row[1])
         self.assertIsNone(token_row[2])
 
+    def test_unknown_employee_is_registered_and_receives_first_token(self) -> None:
+        full_name = "Новиков Роман Сергеевич"
+        full_name_key = "новиков роман сергеевич"
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            response = client.post(
+                "/employee/login",
+                data={"full_name": full_name, "grade_12_plus": "1"},
+            )
+            self.assertEqual(200, response.status_code)
+            self.assertIn("Токен сотрудника создан", response.text)
+            self.assertIn(full_name, response.text)
+            self.assertIn("Грейд 12+", response.text)
+
+            token_marker = '<div class="token">'
+            start = response.text.index(token_marker) + len(token_marker)
+            end = response.text.index("</div>", start)
+            token = response.text[start:end].strip()
+
+            login_response = client.post(
+                "/employee/login",
+                data={"full_name": full_name, "access_token": token},
+                follow_redirects=False,
+            )
+            self.assertEqual(303, login_response.status_code)
+            self.assertIn("вход выполнен", unquote(login_response.headers["location"]).lower())
+
+        with sqlite3.connect(self.db_path) as conn:
+            directory_row = conn.execute(
+                """
+                SELECT full_name, work_email, mobile_phone
+                FROM app_employee_directory
+                WHERE full_name_key = ?;
+                """,
+                (full_name_key,),
+            ).fetchone()
+            profile_row = conn.execute(
+                """
+                SELECT grade_12_plus, employee_status
+                FROM app_employee_profile
+                WHERE full_name_key = ?;
+                """,
+                (full_name_key,),
+            ).fetchone()
+            auth_row = conn.execute(
+                """
+                SELECT token_hash
+                FROM app_employee_auth
+                WHERE full_name_key = ?;
+                """,
+                (full_name_key,),
+            ).fetchone()
+
+        self.assertEqual((full_name, None, None), directory_row)
+        self.assertEqual((1, "active"), profile_row)
+        self.assertIsNotNone(auth_row)
+        self.assertTrue(auth_row[0])
+
     def test_employee_can_mark_forgot_token_for_admin(self) -> None:
         insert_planned_request(
             self.db_path,
