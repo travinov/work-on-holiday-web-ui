@@ -887,6 +887,13 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn('data-date-picker="true"', test_data_response.text)
         self.assertIn('data-hamburger-menu="true"', test_data_response.text)
 
+    def test_date_picker_keeps_popover_open_on_internal_clicks(self) -> None:
+        for template_name in ("employee.html", "index.html", "admin_test_data.html"):
+            template_text = (web_ui.TEMPLATES_DIR / template_name).read_text(encoding="utf-8")
+            with self.subTest(template=template_name):
+                self.assertIn('popover.addEventListener("click"', template_text)
+                self.assertIn("event.stopPropagation();", template_text)
+
     def test_admin_test_data_page_requires_admin_and_generates_completed_batch(self) -> None:
         insert_planned_request(
             self.db_path,

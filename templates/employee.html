@@ -607,6 +607,9 @@
       popover.hidden = true;
       popover.setAttribute("role", "dialog");
       popover.setAttribute("aria-label", "Календарь выбора даты");
+      popover.addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
 
       wrapper.appendChild(pickerButton);
       wrapper.appendChild(popover);
