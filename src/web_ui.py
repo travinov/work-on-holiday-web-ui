@@ -1725,19 +1725,8 @@ def admin_reissue_employee_token(request: Request, employee_key: str = Form(...)
 
     with get_db_connection() as conn:
         ensure_app_tables(conn)
-        row = conn.execute(
-            """
-            SELECT DISTINCT
-                r.full_name_key,
-                COALESCE(r.full_name_normalized, r.full_name) AS full_name
-            FROM survey_responses r
-            WHERE r.request_type = 'Подать заявку'
-              AND r.full_name_key = ?
-            LIMIT 1;
-            """,
-            (employee_key,),
-        ).fetchone()
-        if not row:
+        employee_name = get_employee_display_name(conn, employee_key)
+        if not employee_name:
             return redirect_with_message("/employee?admin_mode=1", "Сотрудник не найден", "error")
         new_token = generate_employee_token()
         upsert_employee_token(conn, employee_key, new_token, reissued=True)
@@ -1750,7 +1739,7 @@ def admin_reissue_employee_token(request: Request, employee_key: str = Form(...)
         {
             "title": "Токен сотрудника перевыпущен",
             "token": new_token,
-            "employee_name": row["full_name"],
+            "employee_name": employee_name,
             "return_url": f"/employee?admin_mode=1&employee_key={employee_key}",
             "is_admin": True,
         },

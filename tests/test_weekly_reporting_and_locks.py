@@ -712,6 +712,38 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             self.assertEqual(303, new_token_login.status_code)
             self.assertIn("вход выполнен", unquote(new_token_login.headers["location"]).lower())
 
+    def test_admin_can_reissue_token_for_generated_directory_employee(self) -> None:
+        users = generate_users.generate_users(self.db_path, count=1, seed=2026)
+        employee = users[0]
+
+        with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            login = login_superuser(client)
+            self.assertEqual(303, login.status_code)
+
+            reissue = client.post(
+                "/admin/employee/reissue-token",
+                data={"employee_key": employee.full_name_key},
+            )
+            self.assertEqual(200, reissue.status_code)
+            self.assertIn("перевыпущен", reissue.text.lower())
+            self.assertIn(employee.full_name, reissue.text)
+
+        with sqlite3.connect(self.db_path) as conn:
+            token_row = conn.execute(
+                """
+                SELECT token_hash, token_reissued_at, forgot_requested_at
+                FROM app_employee_auth
+                WHERE full_name_key = ?;
+                """,
+                (employee.full_name_key,),
+            ).fetchone()
+
+        self.assertIsNotNone(token_row)
+        self.assertTrue(token_row[0])
+        self.assertIsNotNone(token_row[1])
+        self.assertIsNone(token_row[2])
+
     def test_employee_can_mark_forgot_token_for_admin(self) -> None:
         insert_planned_request(
             self.db_path,
