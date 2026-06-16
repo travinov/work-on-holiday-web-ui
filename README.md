@@ -181,7 +181,9 @@ $HOME/.local/state/work-on-holiday/backups/survey_results-pre-update-YYYYMMDD-HH
 - не копирует локальные runtime-данные;
 - запускает серверный no-sudo deploy;
 - применяет инициализацию/обновление схемы без удаления данных;
-- перезапускает user systemd service `work-on-holiday`.
+- останавливает старый `systemd --user` сервис, если он был;
+- запускает приложение в `screen`-сессии `work-on-holiday`;
+- устанавливает `crontab` watchdog для автозапуска после reboot и перезапуска при падении.
 
 Скрипты используют настройки:
 
@@ -191,7 +193,7 @@ $HOME/.local/state/work-on-holiday/backups/survey_results-pre-update-YYYYMMDD-HH
 - bind host: `0.0.0.0`;
 - порт приложения: `8081`;
 - service name: `work-on-holiday`;
-- режим на сервере: no-sudo user deploy.
+- режим на сервере: no-sudo `screen` + `crontab` watchdog.
 
 Скрипты не копируют локальные runtime-данные:
 
@@ -207,13 +209,16 @@ $HOME/.local/state/work-on-holiday/backups/survey_results-pre-update-YYYYMMDD-HH
 - БД: `$HOME/.local/share/work-on-holiday/survey_results.db`;
 - backup и SQL-dump: `$HOME/.local/state/work-on-holiday/backups`;
 - env-файл: `$HOME/.config/work-on-holiday/work-on-holiday.env`;
-- user systemd unit: `$HOME/.config/systemd/user/work-on-holiday.service`.
+- start-скрипт: `$HOME/.local/bin/work-on-holiday-start.sh`;
+- watchdog-скрипт: `$HOME/.local/bin/work-on-holiday-watchdog.sh`;
+- лог приложения: `$HOME/.local/state/work-on-holiday/logs/work-on-holiday.log`;
+- crontab: `@reboot` запуск и ежеминутная health-check проверка.
 
 Проверка с локального компьютера через SSH:
 
 ```bash
 ssh CI09479675-lnx-travinov@tsles-assai0001.esrt.sber.ru \
-  'curl -I http://127.0.0.1:8081/ && systemctl --user status work-on-holiday.service'
+  'curl -I http://127.0.0.1:8081/ && screen -ls | grep work-on-holiday && crontab -l | grep work-on-holiday'
 ```
 
 Проверка внешнего доступа с локального компьютера:
@@ -222,19 +227,6 @@ ssh CI09479675-lnx-travinov@tsles-assai0001.esrt.sber.ru \
 curl -I http://tsles-assai0001.esrt.sber.ru:8081/
 ```
 
-Если `systemctl --user` на сервере недоступен:
-
-```bash
-REMOTE_NO_USER_SYSTEMD=1 deploy/scripts/update-corporate-server.sh
-```
-
-Для первичной установки в этом режиме скрипт также запросит секрет интерактивно:
-
-```bash
-REMOTE_NO_USER_SYSTEMD=1 deploy/scripts/install-to-corporate-server.sh
-```
-
-Скрипт выполнит установку и выведет команду для ручного запуска `uvicorn` на сервере.
 
 ### Несколько проектов на одном сервере
 

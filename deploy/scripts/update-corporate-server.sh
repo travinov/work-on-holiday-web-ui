@@ -41,7 +41,6 @@ REMOTE_BACKUP_DIR="${REMOTE_BACKUP_DIR:-.local/state/work-on-holiday/backups}"
 REMOTE_HOST="${REMOTE_HOST:-0.0.0.0}"
 REMOTE_PORT="${REMOTE_PORT:-8081}"
 REMOTE_SERVICE_NAME="${REMOTE_SERVICE_NAME:-work-on-holiday}"
-REMOTE_NO_USER_SYSTEMD="${REMOTE_NO_USER_SYSTEMD:-0}"
 SSH_OPTS="${SSH_OPTS:-}"
 RSYNC_OPTS="${RSYNC_OPTS:-}"
 
@@ -163,7 +162,6 @@ REMOTE_ENV=(
   "HOST=$(shell_quote "$REMOTE_HOST")"
   "PORT=$(shell_quote "$REMOTE_PORT")"
   "SERVICE_NAME=$(shell_quote "$REMOTE_SERVICE_NAME")"
-  "NO_USER_SYSTEMD=$(shell_quote "$REMOTE_NO_USER_SYSTEMD")"
 )
 
 if [[ -n "${WORK_ON_HOLIDAY_SUPERUSER_LOGIN:-}" ]]; then

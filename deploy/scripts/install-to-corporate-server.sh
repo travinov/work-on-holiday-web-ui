@@ -41,7 +41,6 @@ DEPLOY_PATH="${DEPLOY_PATH:-apps/work-on-holiday}"
 REMOTE_HOST="${REMOTE_HOST:-0.0.0.0}"
 REMOTE_PORT="${REMOTE_PORT:-8081}"
 REMOTE_SERVICE_NAME="${REMOTE_SERVICE_NAME:-work-on-holiday}"
-REMOTE_NO_USER_SYSTEMD="${REMOTE_NO_USER_SYSTEMD:-0}"
 REMOTE_DB_PATH="${REMOTE_DB_PATH:-.local/share/work-on-holiday/survey_results.db}"
 REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.config/work-on-holiday/work-on-holiday.env}"
 SSH_OPTS="${SSH_OPTS:-}"
@@ -124,7 +123,6 @@ REMOTE_ENV=(
   "HOST=$(shell_quote "$REMOTE_HOST")"
   "PORT=$(shell_quote "$REMOTE_PORT")"
   "SERVICE_NAME=$(shell_quote "$REMOTE_SERVICE_NAME")"
-  "NO_USER_SYSTEMD=$(shell_quote "$REMOTE_NO_USER_SYSTEMD")"
   "WORK_ON_HOLIDAY_SUPERUSER_PASSWORD=$(shell_quote "$SUPERUSER_SECRET")"
 )
 
