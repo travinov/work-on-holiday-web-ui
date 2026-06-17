@@ -406,13 +406,14 @@
                 <input type="text" name="actual_work_time" data-time-mask="true" value="{{ req.actual_work_time or '' }}" placeholder="09:00 - 18:00" required />
               </div>
               <div style="margin-top:10px;">
-                <button type="submit" {% if req.status == 'cancelled' or not req.can_edit %}disabled{% endif %}>Сохранить фактическое время</button>
+                <button type="submit" {% if req.status == 'cancelled' or not req.can_edit_actual %}disabled{% endif %}>Сохранить фактическое время</button>
               </div>
             </form>
           </div>
 
           <div class="card" style="margin:0;">
             <h4 style="margin-top:0;">Корректировка заявки</h4>
+            {% if req.can_edit_planning %}
             <form action="/employee/request/correct" method="post">
               <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
               <input type="hidden" name="response_id" value="{{ req.response_id }}" />
@@ -479,9 +480,12 @@
                 <div class="field-hint">После ввода одной АС нажмите Enter или Tab. Также можно вставить список через |, запятую или точку с запятой.</div>
               </div>
               <div style="margin-top:10px;">
-                <button type="submit" {% if not req.can_edit %}disabled{% endif %}>Сохранить корректировку</button>
+                <button type="submit">Сохранить корректировку</button>
               </div>
             </form>
+            {% else %}
+              <p class="meta" style="margin:0;">Прием заявок за этот период закрыт. Корректировка доступна только администратору.</p>
+            {% endif %}
           </div>
         </div>
 
@@ -489,7 +493,7 @@
           <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
           <input type="hidden" name="response_id" value="{{ req.response_id }}" />
           <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
-          <button type="submit" class="cancel" {% if req.status == 'cancelled' or not req.can_edit %}disabled{% endif %}>Перевести в статус "Отменена"</button>
+          <button type="submit" class="cancel" {% if req.status == 'cancelled' or not req.can_edit_planning %}disabled{% endif %}>Перевести в статус "Отменена"</button>
         </form>
 
         {% if req.is_locked %}

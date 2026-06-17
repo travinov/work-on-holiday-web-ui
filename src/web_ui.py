@@ -1088,6 +1088,8 @@ def get_employee_requests(employee_key: str, admin_mode: bool = False) -> list[d
             )
             is_locked = lock_info is not None or planning_lock is not None or actual_lock is not None
             can_edit = admin_mode or not is_locked
+            can_edit_planning = admin_mode or (lock_info is None and planning_lock is None)
+            can_edit_actual = admin_mode or (lock_info is None and actual_lock is None)
 
             result.append(
                 {
@@ -1123,6 +1125,8 @@ def get_employee_requests(employee_key: str, admin_mode: bool = False) -> list[d
                         else ""
                     ),
                     "can_edit": can_edit,
+                    "can_edit_planning": can_edit_planning,
+                    "can_edit_actual": can_edit_actual,
                     "lock_week_label": (
                         f"{to_ru_date(lock_info['week_start'])} - {to_ru_date(lock_info['week_end'])}"
                         if lock_info
@@ -2046,9 +2050,26 @@ def employee_correct_request(
         if not identity:
             return build_employee_redirect(employee_key, "Заявка не найдена или недоступна", "error", admin_mode=is_admin_mode)
         request_uid, full_name_key = identity
-        effective_date = planned_work_date.strip()
-        if not is_admin_mode and effective_date and (
-            get_lock_info(conn, response_id) or get_period_lock_for_date(conn, "planning", effective_date)
+        row = conn.execute(
+            """
+            SELECT
+                r.planned_work_date,
+                st.override_planned_work_date
+            FROM survey_responses r
+            LEFT JOIN app_request_state st
+                ON st.request_uid = ('req:' || CAST(r.response_id AS TEXT))
+            WHERE r.response_id = ?;
+            """,
+            (response_id,),
+        ).fetchone()
+        current_effective_date = None
+        if row:
+            current_effective_date = row["override_planned_work_date"] or row["planned_work_date"]
+        requested_date = planned_work_date.strip()
+        if not is_admin_mode and (
+            get_lock_info(conn, response_id)
+            or (current_effective_date and get_period_lock_for_date(conn, "planning", current_effective_date))
+            or (requested_date and get_period_lock_for_date(conn, "planning", requested_date))
         ):
             return build_employee_redirect(
                 employee_key,

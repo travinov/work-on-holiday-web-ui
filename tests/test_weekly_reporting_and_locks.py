@@ -1203,6 +1203,76 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual(303, created.status_code)
         self.assertIn("заявка создана", unquote(created.headers["location"]).lower())
 
+    def test_planning_period_lock_hides_employee_correction_form(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=914,
+            full_name="Закрытов Захар Иванович",
+            full_name_key="закрытов захар иванович",
+            planned_date="2026-04-22",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_period_lock (lock_type, date_from, date_to, created_by, created_at, comment)
+                VALUES ('planning', '2026-04-20', '2026-04-26', 'root', '2026-04-20T10:00:00', 'test')
+                """
+            )
+            conn.commit()
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Закрытов Захар Иванович"}).status_code)
+            page = client.get("/employee")
+
+        self.assertEqual(200, page.status_code)
+        self.assertIn("Прием заявок за этот период закрыт", page.text)
+        self.assertNotIn('action="/employee/request/correct"', page.text)
+        self.assertIn('action="/employee/request/actual"', page.text)
+
+    def test_planning_period_lock_blocks_employee_correction_from_locked_current_date(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=915,
+            full_name="Корректов Кирилл Иванович",
+            full_name_key="корректов кирилл иванович",
+            planned_date="2026-04-22",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_period_lock (lock_type, date_from, date_to, created_by, created_at, comment)
+                VALUES ('planning', '2026-04-20', '2026-04-26', 'root', '2026-04-20T10:00:00', 'test')
+                """
+            )
+            conn.commit()
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Корректов Кирилл Иванович"}).status_code)
+            blocked = client.post(
+                "/employee/request/correct",
+                data={
+                    "employee_key": "корректов кирилл иванович",
+                    "response_id": "915",
+                    "planned_work_date": "2026-04-30",
+                    "planned_work_time": "10:00 - 12:00",
+                    "payment_type": "Отгул",
+                    "task_description": "Попытка переноса",
+                    "justification": "Проверка",
+                    "systems": "Система A",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, blocked.status_code)
+        self.assertIn("корректировка доступна только администратору", unquote(blocked.headers["location"]).lower())
+        with sqlite3.connect(self.db_path) as conn:
+            state = conn.execute(
+                "SELECT override_planned_work_date FROM app_request_state WHERE response_id = 915",
+            ).fetchone()
+        self.assertIsNone(state)
+
     def test_actual_period_lock_blocks_employee_actual_time(self) -> None:
         insert_planned_request(
             self.db_path,
