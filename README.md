@@ -13,6 +13,8 @@
 5. После работы сотрудник указывает фактическую дату и фактически отработанное время.
 6. Администратор формирует отчетность по факту и при необходимости закрывает период.
 
+Подробные ролевые workflow и corner cases описаны в [docs/workflows/employee-admin-workflows.md](docs/workflows/employee-admin-workflows.md).
+
 ## Структура БД
 
 ### `app_employee_directory`
