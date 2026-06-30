@@ -667,6 +667,29 @@ def get_period_locks(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return result
 
 
+def release_planning_period_lock(conn: sqlite3.Connection, lock_id: int) -> None:
+    row = conn.execute(
+        """
+        SELECT lock_id, lock_type
+        FROM app_period_lock
+        WHERE lock_id = ?;
+        """,
+        (lock_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("Блокировка не найдена")
+    if row["lock_type"] != "planning":
+        raise ValueError("Можно снять только блокировку приема заявок")
+    conn.execute(
+        """
+        DELETE FROM app_period_lock
+        WHERE lock_id = ?
+          AND lock_type = 'planning';
+        """,
+        (lock_id,),
+    )
+
+
 def get_employee_display_name(conn: sqlite3.Connection, employee_key: str) -> str | None:
     row = conn.execute(
         """
@@ -2139,6 +2162,20 @@ def admin_create_period_lock(
         conn.commit()
     label = "приема заявок" if lock_type == "planning" else "ввода факта"
     return redirect_with_message("/admin", f"Период {label} закрыт", "success")
+
+
+@app.post("/admin/locks/release-planning")
+def admin_release_planning_period_lock(request: Request, lock_id: int = Form(...)) -> RedirectResponse:
+    if not is_admin_or_superuser_request(request):
+        return redirect_with_message("/", "Снятие блокировки доступно только администратору", "error")
+    with get_db_connection() as conn:
+        ensure_app_tables(conn)
+        try:
+            release_planning_period_lock(conn, lock_id)
+        except ValueError as exc:
+            return redirect_with_message("/admin", str(exc), "error")
+        conn.commit()
+    return redirect_with_message("/admin", "Блокировка приема заявок снята. Статусы заявок не изменялись.", "success")
 
 
 @app.post("/generate/full")

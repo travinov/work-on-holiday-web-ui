@@ -1203,6 +1203,78 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual(303, created.status_code)
         self.assertIn("заявка создана", unquote(created.headers["location"]).lower())
 
+    def test_admin_can_release_planning_lock_without_changing_request_status(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=916,
+            full_name="Разлоков Роман Иванович",
+            full_name_key="разлоков роман иванович",
+            planned_date="2026-04-22",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_period_lock (lock_id, lock_type, date_from, date_to, created_by, created_at, comment)
+                VALUES (501, 'planning', '2026-04-20', '2026-04-26', 'root', '2026-04-20T10:00:00', 'release test')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:916', 916, 'разлоков роман иванович', 'cancelled', '2026-04-20T10:00:00', '2026-04-20T10:00:00')
+                """
+            )
+            conn.commit()
+
+        with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(303, login_superuser(client).status_code)
+            admin_page = client.get("/admin")
+            self.assertEqual(200, admin_page.status_code)
+            self.assertIn("/admin/locks/release-planning", admin_page.text)
+
+            release = client.post(
+                "/admin/locks/release-planning",
+                data={"lock_id": "501"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, release.status_code)
+        self.assertIn("блокировка приема заявок снята", unquote(release.headers["location"]).lower())
+        with sqlite3.connect(self.db_path) as conn:
+            lock_count = conn.execute("SELECT COUNT(*) FROM app_period_lock WHERE lock_id = 501").fetchone()[0]
+            status = conn.execute(
+                "SELECT status FROM app_request_state WHERE response_id = 916",
+            ).fetchone()[0]
+        self.assertEqual(0, lock_count)
+        self.assertEqual("cancelled", status)
+
+    def test_admin_cannot_release_actual_lock_through_planning_unlock(self) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_period_lock (lock_id, lock_type, date_from, date_to, created_by, created_at, comment)
+                VALUES (502, 'actual', '2026-04-20', '2026-04-26', 'root', '2026-04-20T10:00:00', 'actual lock')
+                """
+            )
+            conn.commit()
+
+        with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(303, login_superuser(client).status_code)
+            release = client.post(
+                "/admin/locks/release-planning",
+                data={"lock_id": "502"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, release.status_code)
+        self.assertIn("только блокировку приема заявок", unquote(release.headers["location"]).lower())
+        with sqlite3.connect(self.db_path) as conn:
+            lock_count = conn.execute("SELECT COUNT(*) FROM app_period_lock WHERE lock_id = 502").fetchone()[0]
+        self.assertEqual(1, lock_count)
+
     def test_planning_period_lock_hides_employee_correction_form(self) -> None:
         insert_planned_request(
             self.db_path,

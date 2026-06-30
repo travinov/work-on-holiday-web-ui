@@ -116,13 +116,23 @@
       </form>
       {% if period_locks %}
         <table style="margin-top: 12px;">
-          <thead><tr><th>Тип</th><th>Период</th><th>Кем</th></tr></thead>
+          <thead><tr><th>Тип</th><th>Период</th><th>Кем</th><th>Действие</th></tr></thead>
           <tbody>
             {% for lock in period_locks %}
               <tr>
                 <td>{{ lock.lock_type_label }}</td>
                 <td>{{ lock.date_from_ru }} - {{ lock.date_to_ru }}</td>
                 <td>{{ lock.created_by }}</td>
+                <td>
+                  {% if lock.lock_type == 'planning' %}
+                    <form action="/admin/locks/release-planning" method="post">
+                      <input type="hidden" name="lock_id" value="{{ lock.lock_id }}" />
+                      <button type="submit" class="secondary">Снять прием</button>
+                    </form>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>
