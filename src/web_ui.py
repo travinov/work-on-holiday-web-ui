@@ -690,6 +690,50 @@ def release_planning_period_lock(conn: sqlite3.Connection, lock_id: int) -> None
     )
 
 
+def move_active_requests_to_in_progress(conn: sqlite3.Connection, date_from: str, date_to: str) -> int:
+    rows = conn.execute(
+        """
+        SELECT r.response_id, r.full_name_key
+        FROM survey_responses r
+        LEFT JOIN app_request_state st ON st.response_id = r.response_id
+        WHERE r.request_type = 'Подать заявку'
+          AND COALESCE(st.override_planned_work_date, r.planned_work_date) BETWEEN ? AND ?
+          AND COALESCE(st.status, 'active') = 'active';
+        """,
+        (date_from, date_to),
+    ).fetchall()
+    for row in rows:
+        upsert_request_state(
+            conn,
+            request_uid=f"req:{row['response_id']}",
+            response_id=int(row["response_id"]),
+            full_name_key=row["full_name_key"],
+            updates={"status": "in_progress", "returned_for_correction": 0},
+        )
+    return len(rows)
+
+
+def move_in_fact_requests_to_completed(conn: sqlite3.Connection, date_from: str, date_to: str) -> int:
+    rows = conn.execute(
+        """
+        SELECT response_id, full_name_key
+        FROM app_request_state
+        WHERE status = 'in_fact'
+          AND actual_work_date BETWEEN ? AND ?;
+        """,
+        (date_from, date_to),
+    ).fetchall()
+    for row in rows:
+        upsert_request_state(
+            conn,
+            request_uid=f"req:{row['response_id']}",
+            response_id=int(row["response_id"]),
+            full_name_key=row["full_name_key"],
+            updates={"status": "completed", "returned_for_correction": 0},
+        )
+    return len(rows)
+
+
 def get_employee_display_name(conn: sqlite3.Connection, employee_key: str) -> str | None:
     row = conn.execute(
         """
@@ -972,6 +1016,7 @@ def get_admin_requests_overview() -> list[dict[str, Any]]:
                 COALESCE(st.override_task_description, r.task_description) AS task_description,
                 COALESCE(st.status, 'active') AS request_status,
                 st.is_corrected,
+                st.returned_for_correction,
                 st.actual_work_date,
                 st.actual_work_time,
                 lock.week_start,
@@ -996,6 +1041,7 @@ def get_admin_requests_overview() -> list[dict[str, Any]]:
             status_label = STATUS_LABELS.get(status, status)
             if item.get("is_corrected"):
                 status_label += " · откорректирована"
+            returned_for_correction = bool(item.get("returned_for_correction") or 0)
             planning_lock = (
                 get_period_lock_for_date(conn, "planning", item.get("planned_work_date"))
                 if item.get("planned_work_date")
@@ -1007,6 +1053,7 @@ def get_admin_requests_overview() -> list[dict[str, Any]]:
                 else None
             )
             item["status_label"] = status_label
+            item["status"] = status
             item["planned_work_date_ru"] = to_ru_date(item.get("planned_work_date"))
             item["lock_week_label"] = (
                 f"{to_ru_date(item['week_start'])} - {to_ru_date(item['week_end'])}"
@@ -1061,6 +1108,7 @@ def get_employee_requests(employee_key: str, admin_mode: bool = False) -> list[d
                 ('req:' || CAST(p.response_id AS TEXT)) AS request_uid,
                 st.status,
                 st.is_corrected,
+                st.returned_for_correction,
                 st.override_planned_work_date,
                 st.override_planned_work_time,
                 st.override_payment_type,
@@ -1095,6 +1143,7 @@ def get_employee_requests(employee_key: str, admin_mode: bool = False) -> list[d
             if status not in VALID_STATUSES:
                 status = "active"
             is_corrected = bool(row_dict.get("is_corrected") or 0)
+            returned_for_correction = bool(row_dict.get("returned_for_correction") or 0)
             status_label = STATUS_LABELS.get(status, "Неизвестно")
             if is_corrected:
                 status_label += " · заявка откорректирована"
@@ -1111,8 +1160,14 @@ def get_employee_requests(employee_key: str, admin_mode: bool = False) -> list[d
             )
             is_locked = lock_info is not None or planning_lock is not None or actual_lock is not None
             can_edit = admin_mode or not is_locked
-            can_edit_planning = admin_mode or (lock_info is None and planning_lock is None)
-            can_edit_actual = admin_mode or (lock_info is None and actual_lock is None)
+            can_edit_planning = admin_mode or (
+                status == "active"
+                and lock_info is None
+                and (planning_lock is None or returned_for_correction)
+            )
+            can_edit_actual = admin_mode or (
+                status in {"in_progress", "in_fact"} and lock_info is None and actual_lock is None
+            )
 
             result.append(
                 {
@@ -1123,6 +1178,7 @@ def get_employee_requests(employee_key: str, admin_mode: bool = False) -> list[d
                     "status": status,
                     "status_label": status_label,
                     "is_corrected": is_corrected,
+                    "returned_for_correction": returned_for_correction,
                     "corrected_at": to_ru_date((row_dict["corrected_at"] or "")[:10]) if row_dict["corrected_at"] else "",
                     "planned_work_date_iso": effective_planned_date or "",
                     "planned_work_date_ru": to_ru_date(effective_planned_date),
@@ -1183,6 +1239,7 @@ def upsert_request_state(
         "full_name_key": full_name_key,
         "status": "active",
         "is_corrected": 0,
+        "returned_for_correction": 0,
         "override_planned_work_date": None,
         "override_planned_work_time": None,
         "override_payment_type": None,
@@ -1212,6 +1269,7 @@ def upsert_request_state(
             full_name_key,
             status,
             is_corrected,
+            returned_for_correction,
             override_planned_work_date,
             override_planned_work_time,
             override_payment_type,
@@ -1229,6 +1287,7 @@ def upsert_request_state(
             :full_name_key,
             :status,
             :is_corrected,
+            :returned_for_correction,
             :override_planned_work_date,
             :override_planned_work_time,
             :override_payment_type,
@@ -1246,6 +1305,7 @@ def upsert_request_state(
             full_name_key = excluded.full_name_key,
             status = excluded.status,
             is_corrected = excluded.is_corrected,
+            returned_for_correction = excluded.returned_for_correction,
             override_planned_work_date = excluded.override_planned_work_date,
             override_planned_work_time = excluded.override_planned_work_time,
             override_payment_type = excluded.override_payment_type,
@@ -1494,7 +1554,8 @@ async def admin_create_test_data(request: Request) -> RedirectResponse:
                     response_id=response_id,
                     full_name_key=employee_key,
                     updates={
-                        "status": "completed",
+                        "status": "in_fact",
+                        "returned_for_correction": 0,
                         "actual_work_date": test_work_date,
                         "actual_work_time": planned_work_time,
                     },
@@ -1746,7 +1807,7 @@ def admin_update_employee_status(
                     request_uid=f"req:{row['response_id']}",
                     response_id=int(row["response_id"]),
                     full_name_key=employee_key,
-                    updates={"status": "cancelled"},
+                    updates={"status": "cancelled", "returned_for_correction": 0},
                 )
         conn.commit()
 
@@ -1837,6 +1898,17 @@ def employee_set_actual_time(
         if not identity:
             return build_employee_redirect(employee_key, "Заявка не найдена или недоступна", "error", admin_mode=is_admin_mode)
         request_uid, full_name_key = identity
+        existing = get_request_state(conn, request_uid)
+        current_status = existing.get("status") if existing else "active"
+        if current_status not in VALID_STATUSES:
+            current_status = "active"
+        if not is_admin_mode and current_status not in {"in_progress", "in_fact"}:
+            return build_employee_redirect(
+                employee_key,
+                "Факт можно указать только по заявке, принятой в работу.",
+                "error",
+                admin_mode=False,
+            )
         if not is_admin_mode and get_period_lock_for_date(conn, "actual", actual_work_date):
             return build_employee_redirect(
                 employee_key,
@@ -1851,7 +1923,8 @@ def employee_set_actual_time(
             response_id=response_id,
             full_name_key=full_name_key,
             updates={
-                "status": "completed",
+                "status": "in_fact",
+                "returned_for_correction": 0,
                 "actual_work_date": actual_work_date,
                 "actual_work_time": actual_work_time.strip(),
             },
@@ -2010,13 +2083,26 @@ def employee_cancel_request(
         if not identity:
             return build_employee_redirect(employee_key, "Заявка не найдена или недоступна", "error", admin_mode=is_admin_mode)
         request_uid, full_name_key = identity
+        existing = get_request_state(conn, request_uid)
+        current_status = existing.get("status") if existing else "active"
+        if current_status not in VALID_STATUSES:
+            current_status = "active"
+        returned_for_correction = bool(existing.get("returned_for_correction") if existing else 0)
+        if not is_admin_mode and current_status != "active":
+            return build_employee_redirect(
+                employee_key,
+                "Отмена доступна только для заявки в статусе Заявка подана.",
+                "error",
+                admin_mode=False,
+            )
         row = conn.execute(
             "SELECT planned_work_date FROM survey_responses WHERE response_id = ?;",
             (response_id,),
         ).fetchone()
         planned_date = row["planned_work_date"] if row else None
         if not is_admin_mode and planned_date and (
-            get_lock_info(conn, response_id) or get_period_lock_for_date(conn, "planning", planned_date)
+            get_lock_info(conn, response_id)
+            or (get_period_lock_for_date(conn, "planning", planned_date) and not returned_for_correction)
         ):
             return build_employee_redirect(
                 employee_key,
@@ -2030,7 +2116,7 @@ def employee_cancel_request(
             request_uid=request_uid,
             response_id=response_id,
             full_name_key=full_name_key,
-            updates={"status": "cancelled"},
+            updates={"status": "cancelled", "returned_for_correction": 0},
         )
         conn.commit()
 
@@ -2073,6 +2159,18 @@ def employee_correct_request(
         if not identity:
             return build_employee_redirect(employee_key, "Заявка не найдена или недоступна", "error", admin_mode=is_admin_mode)
         request_uid, full_name_key = identity
+        existing = get_request_state(conn, request_uid)
+        current_status = existing.get("status") if existing else "active"
+        if current_status not in VALID_STATUSES:
+            current_status = "active"
+        returned_for_correction = bool(existing.get("returned_for_correction") if existing else 0)
+        if not is_admin_mode and current_status != "active":
+            return build_employee_redirect(
+                employee_key,
+                "Корректировка доступна только для заявки в статусе Заявка подана.",
+                "error",
+                admin_mode=False,
+            )
         row = conn.execute(
             """
             SELECT
@@ -2091,8 +2189,13 @@ def employee_correct_request(
         requested_date = planned_work_date.strip()
         if not is_admin_mode and (
             get_lock_info(conn, response_id)
-            or (current_effective_date and get_period_lock_for_date(conn, "planning", current_effective_date))
-            or (requested_date and get_period_lock_for_date(conn, "planning", requested_date))
+            or (
+                not returned_for_correction
+                and (
+                    (current_effective_date and get_period_lock_for_date(conn, "planning", current_effective_date))
+                    or (requested_date and get_period_lock_for_date(conn, "planning", requested_date))
+                )
+            )
         ):
             return build_employee_redirect(
                 employee_key,
@@ -2108,11 +2211,6 @@ def employee_correct_request(
                 "error",
                 admin_mode=is_admin_mode,
             )
-
-        existing = get_request_state(conn, request_uid)
-        current_status = existing.get("status") if existing else "active"
-        if current_status not in VALID_STATUSES:
-            current_status = "active"
 
         upsert_request_state(
             conn,
@@ -2136,6 +2234,39 @@ def employee_correct_request(
     return build_employee_redirect(employee_key, "Заявка откорректирована", "success", admin_mode=is_admin_mode)
 
 
+@app.post("/admin/request/status")
+def admin_update_request_status(
+    request: Request,
+    employee_key: str = Form(...),
+    response_id: int = Form(...),
+    status: str = Form(...),
+) -> RedirectResponse:
+    if not is_admin_or_superuser_request(request):
+        return redirect_with_message("/", "Изменение статуса заявки доступно только администратору", "error")
+    if status not in VALID_STATUSES:
+        return redirect_with_message("/admin/requests", "Некорректный статус заявки", "error")
+
+    with get_db_connection() as conn:
+        ensure_app_tables(conn)
+        identity = get_request_identity(conn, employee_key, response_id)
+        if not identity:
+            return redirect_with_message("/admin/requests", "Заявка не найдена", "error")
+        request_uid, full_name_key = identity
+        upsert_request_state(
+            conn,
+            request_uid=request_uid,
+            response_id=response_id,
+            full_name_key=full_name_key,
+            updates={
+                "status": status,
+                "returned_for_correction": 1 if status == "active" else 0,
+            },
+        )
+        conn.commit()
+
+    return redirect_with_message("/admin/requests", "Статус заявки обновлен", "success")
+
+
 @app.post("/admin/locks/create")
 def admin_create_period_lock(
     request: Request,
@@ -2157,6 +2288,10 @@ def admin_create_period_lock(
                 created_by=get_admin_actor_key(request),
                 comment=comment,
             )
+            if lock_type == "planning":
+                move_active_requests_to_in_progress(conn, date_from, date_to)
+            if lock_type == "actual":
+                move_in_fact_requests_to_completed(conn, date_from, date_to)
         except ValueError as exc:
             return redirect_with_message("/admin", str(exc), "error")
         conn.commit()

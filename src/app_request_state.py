@@ -2,12 +2,95 @@ from __future__ import annotations
 
 import sqlite3
 
-VALID_STATUSES = {"active", "cancelled", "completed"}
+VALID_STATUSES = {"active", "in_progress", "in_fact", "completed", "cancelled"}
 STATUS_LABELS = {
-    "active": "Активна",
+    "active": "Заявка подана",
+    "in_progress": "Принята в работу",
+    "in_fact": "Факт указан",
+    "completed": "Закрыта",
     "cancelled": "Отменена",
-    "completed": "Фактическое время указано",
 }
+
+
+def _create_app_request_state_table(conn: sqlite3.Connection, table_name: str = "app_request_state") -> None:
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+            request_uid TEXT PRIMARY KEY,
+            response_id INTEGER NOT NULL,
+            full_name_key TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'in_progress', 'in_fact', 'completed', 'cancelled')),
+            is_corrected INTEGER NOT NULL DEFAULT 0 CHECK(is_corrected IN (0, 1)),
+            returned_for_correction INTEGER NOT NULL DEFAULT 0 CHECK(returned_for_correction IN (0, 1)),
+            override_planned_work_date TEXT,
+            override_planned_work_time TEXT,
+            override_payment_type TEXT,
+            override_task_description TEXT,
+            override_justification TEXT,
+            override_systems TEXT,
+            actual_work_date TEXT,
+            actual_work_time TEXT,
+            corrected_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        """
+    )
+
+
+def _migrate_app_request_state_statuses(conn: sqlite3.Connection) -> None:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'app_request_state';"
+    ).fetchone()
+    table_sql = row[0] if row else ""
+    if "in_progress" in table_sql and "in_fact" in table_sql:
+        return
+
+    conn.execute("ALTER TABLE app_request_state RENAME TO app_request_state_old;")
+    _create_app_request_state_table(conn)
+    conn.execute(
+        """
+        INSERT INTO app_request_state (
+            request_uid,
+            response_id,
+            full_name_key,
+            status,
+            is_corrected,
+            returned_for_correction,
+            override_planned_work_date,
+            override_planned_work_time,
+            override_payment_type,
+            override_task_description,
+            override_justification,
+            override_systems,
+            actual_work_date,
+            actual_work_time,
+            corrected_at,
+            created_at,
+            updated_at
+        )
+        SELECT
+            request_uid,
+            response_id,
+            full_name_key,
+            status,
+            is_corrected,
+            0 AS returned_for_correction,
+            override_planned_work_date,
+            override_planned_work_time,
+            override_payment_type,
+            override_task_description,
+            override_justification,
+            override_systems,
+            actual_work_date,
+            actual_work_time,
+            corrected_at,
+            created_at,
+            updated_at
+        FROM app_request_state_old;
+        """
+    )
+    conn.execute("DROP TABLE app_request_state_old;")
 
 
 def ensure_app_tables(conn: sqlite3.Connection) -> None:
@@ -26,28 +109,16 @@ def ensure_app_tables(conn: sqlite3.Connection) -> None:
         );
         """
     )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS app_request_state (
-            request_uid TEXT PRIMARY KEY,
-            response_id INTEGER NOT NULL,
-            full_name_key TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'cancelled', 'completed')),
-            is_corrected INTEGER NOT NULL DEFAULT 0 CHECK(is_corrected IN (0, 1)),
-            override_planned_work_date TEXT,
-            override_planned_work_time TEXT,
-            override_payment_type TEXT,
-            override_task_description TEXT,
-            override_justification TEXT,
-            override_systems TEXT,
-            actual_work_date TEXT,
-            actual_work_time TEXT,
-            corrected_at TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-        """
-    )
+    _create_app_request_state_table(conn)
+    _migrate_app_request_state_statuses(conn)
+    request_state_columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(app_request_state)").fetchall()
+    }
+    if "returned_for_correction" not in request_state_columns:
+        conn.execute(
+            "ALTER TABLE app_request_state ADD COLUMN returned_for_correction INTEGER NOT NULL DEFAULT 0 CHECK(returned_for_correction IN (0, 1));"
+        )
     conn.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_app_request_state_full_name_key

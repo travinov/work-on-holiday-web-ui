@@ -30,6 +30,8 @@
     button.cancel { background: #b91c1c; color: #fff; border-color: #991b1b; }
     .badge { display: inline-block; font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; }
     .badge.active { background: #eff6ff; color: #1e40af; border-color: #93c5fd; }
+    .badge.in_progress { background: #fff7ed; color: #9a3412; border-color: #fdba74; }
+    .badge.in_fact { background: #f0fdf4; color: #166534; border-color: #86efac; }
     .badge.completed { background: #ecfdf5; color: #065f46; border-color: #6ee7b7; }
     .badge.cancelled { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
     .chip { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 10px; border-radius: 999px; border: 1px solid #dbe4f0; background: #f8fbff; color: #334155; }
@@ -406,7 +408,7 @@
                 <input type="text" name="actual_work_time" data-time-mask="true" value="{{ req.actual_work_time or '' }}" placeholder="09:00 - 18:00" required />
               </div>
               <div style="margin-top:10px;">
-                <button type="submit" {% if req.status == 'cancelled' or not req.can_edit_actual %}disabled{% endif %}>Сохранить фактическое время</button>
+                <button type="submit" {% if req.status in ['cancelled', 'completed'] or not req.can_edit_actual %}disabled{% endif %}>Сохранить фактическое время</button>
               </div>
             </form>
           </div>

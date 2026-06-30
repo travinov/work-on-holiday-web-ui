@@ -185,6 +185,52 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIsNotNone(profile)
         self.assertEqual(1 if first_user.grade_12_plus else 0, profile[0])
 
+    def test_ensure_app_tables_migrates_old_request_status_constraint(self) -> None:
+        legacy_db = Path(self.tmpdir.name) / "legacy_status.sqlite3"
+        with sqlite3.connect(legacy_db) as conn:
+            conn.execute(
+                """
+                CREATE TABLE app_request_state (
+                    request_uid TEXT PRIMARY KEY,
+                    response_id INTEGER NOT NULL,
+                    full_name_key TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'cancelled', 'completed')),
+                    is_corrected INTEGER NOT NULL DEFAULT 0 CHECK(is_corrected IN (0, 1)),
+                    override_planned_work_date TEXT,
+                    override_planned_work_time TEXT,
+                    override_payment_type TEXT,
+                    override_task_description TEXT,
+                    override_justification TEXT,
+                    override_systems TEXT,
+                    actual_work_date TEXT,
+                    actual_work_time TEXT,
+                    corrected_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:1', 1, 'legacy user', 'active', '2026-04-20T10:00:00', '2026-04-20T10:00:00')
+                """
+            )
+            ensure_app_tables(conn)
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:2', 2, 'legacy user', 'in_progress', '2026-04-20T10:00:00', '2026-04-20T10:00:00')
+                """
+            )
+            statuses = conn.execute(
+                "SELECT request_uid, status, returned_for_correction FROM app_request_state ORDER BY request_uid"
+            ).fetchall()
+
+        self.assertEqual([("req:1", "active", 0), ("req:2", "in_progress", 0)], statuses)
+
     def test_report_week_filter_uses_corrected_planned_date(self) -> None:
         insert_planned_request(
             self.db_path,
@@ -894,7 +940,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 self.assertIn('popover.addEventListener("click"', template_text)
                 self.assertIn("event.stopPropagation();", template_text)
 
-    def test_admin_test_data_page_requires_admin_and_generates_completed_batch(self) -> None:
+    def test_admin_test_data_page_requires_admin_and_generates_in_fact_batch(self) -> None:
         insert_planned_request(
             self.db_path,
             response_id=801,
@@ -1022,7 +1068,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual("Отгул", payments["грейдов григорий иванович"])
         self.assertTrue(all(row["planned_work_time"] == "10:00 - 14:00" for row in generated_rows))
         self.assertEqual(2, len(states))
-        self.assertTrue(all(row["status"] == "completed" for row in states))
+        self.assertTrue(all(row["status"] == "in_fact" for row in states))
         self.assertTrue(all(row["actual_work_date"] == "2026-05-23" for row in states))
         self.assertTrue(all(row["actual_work_time"] == "10:00 - 14:00" for row in states))
         self.assertEqual(["Пуаро | ЕФС.Риск-решения", "Пуаро | ЕФС.Риск-решения"], [row["systems"] for row in systems])
@@ -1038,6 +1084,17 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             self.assertIn("is_superuser", profile_columns)
             self.assertIn("employee_status", profile_columns)
             self.assertIn("status_reason", profile_columns)
+
+            request_state_columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(app_request_state)").fetchall()
+            }
+            request_state_sql = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'app_request_state'",
+            ).fetchone()[0]
+            self.assertIn("returned_for_correction", request_state_columns)
+            self.assertIn("in_progress", request_state_sql)
+            self.assertIn("in_fact", request_state_sql)
             self.assertIn("blocked_at", profile_columns)
             self.assertIn("archived_at", profile_columns)
             self.assertIn("restored_at", profile_columns)
@@ -1203,6 +1260,195 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual(303, created.status_code)
         self.assertIn("заявка создана", unquote(created.headers["location"]).lower())
 
+    def test_planning_period_lock_moves_active_requests_to_in_progress(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=916,
+            full_name="Процессов Павел Иванович",
+            full_name_key="процессов павел иванович",
+            planned_date="2026-04-22",
+        )
+        insert_planned_request(
+            self.db_path,
+            response_id=917,
+            full_name="Процессов Павел Иванович",
+            full_name_key="процессов павел иванович",
+            planned_date="2026-04-23",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:917', 917, 'процессов павел иванович', 'cancelled', '2026-04-20T10:00:00', '2026-04-20T10:00:00')
+                """
+            )
+            conn.commit()
+
+        with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(303, login_superuser(client).status_code)
+            response = client.post(
+                "/admin/locks/create",
+                data={
+                    "lock_type": "planning",
+                    "date_from": "2026-04-20",
+                    "date_to": "2026-04-26",
+                    "comment": "close planning",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, response.status_code)
+        with sqlite3.connect(self.db_path) as conn:
+            statuses = {
+                row[0]: row[1]
+                for row in conn.execute(
+                    "SELECT response_id, status FROM app_request_state WHERE response_id IN (916, 917)"
+                ).fetchall()
+            }
+        self.assertEqual("in_progress", statuses[916])
+        self.assertEqual("cancelled", statuses[917])
+
+    def test_employee_actual_time_moves_request_to_in_fact(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=918,
+            full_name="Фактичев Федор Иванович",
+            full_name_key="фактичев федор иванович",
+            planned_date="2026-04-22",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:918', 918, 'фактичев федор иванович', 'in_progress', '2026-04-20T10:00:00', '2026-04-20T10:00:00')
+                """
+            )
+            conn.commit()
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Фактичев Федор Иванович"}).status_code)
+            response = client.post(
+                "/employee/request/actual",
+                data={
+                    "employee_key": "фактичев федор иванович",
+                    "response_id": "918",
+                    "actual_work_date": "2026-04-22",
+                    "actual_work_time": "10:00 - 12:00",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, response.status_code)
+        with sqlite3.connect(self.db_path) as conn:
+            status = conn.execute("SELECT status FROM app_request_state WHERE response_id = 918").fetchone()[0]
+        self.assertEqual("in_fact", status)
+
+    def test_actual_period_lock_moves_in_fact_requests_to_completed(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=919,
+            full_name="Закрытов Федор Иванович",
+            full_name_key="закрытов федор иванович",
+            planned_date="2026-04-22",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, actual_work_date, actual_work_time, created_at, updated_at
+                ) VALUES ('req:919', 919, 'закрытов федор иванович', 'in_fact', '2026-04-22', '10:00 - 12:00', '2026-04-22T12:00:00', '2026-04-22T12:00:00')
+                """
+            )
+            conn.commit()
+
+        with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(303, login_superuser(client).status_code)
+            response = client.post(
+                "/admin/locks/create",
+                data={
+                    "lock_type": "actual",
+                    "date_from": "2026-04-20",
+                    "date_to": "2026-04-26",
+                    "comment": "close fact",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, response.status_code)
+        with sqlite3.connect(self.db_path) as conn:
+            status = conn.execute("SELECT status FROM app_request_state WHERE response_id = 919").fetchone()[0]
+        self.assertEqual("completed", status)
+
+    def test_admin_can_return_in_progress_request_to_active(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=920,
+            full_name="Возвратов Виктор Иванович",
+            full_name_key="возвратов виктор иванович",
+            planned_date="2026-04-22",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_period_lock (lock_type, date_from, date_to, created_by, created_at, comment)
+                VALUES ('planning', '2026-04-20', '2026-04-26', 'root', '2026-04-20T10:00:00', 'planning remains locked')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:920', 920, 'возвратов виктор иванович', 'in_progress', '2026-04-20T10:00:00', '2026-04-20T10:00:00')
+                """
+            )
+            conn.commit()
+
+        with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(303, login_superuser(client).status_code)
+            response = client.post(
+                "/admin/request/status",
+                data={"employee_key": "возвратов виктор иванович", "response_id": "920", "status": "active"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, response.status_code)
+        with sqlite3.connect(self.db_path) as conn:
+            status, returned_for_correction = conn.execute(
+                "SELECT status, returned_for_correction FROM app_request_state WHERE response_id = 920"
+            ).fetchone()
+        self.assertEqual("active", status)
+        self.assertEqual(1, returned_for_correction)
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            employee_client = TestClient(web_ui.app)
+            self.assertEqual(
+                200,
+                employee_client.post("/employee/login", data={"full_name": "Возвратов Виктор Иванович"}).status_code,
+            )
+            correction = employee_client.post(
+                "/employee/request/correct",
+                data={
+                    "employee_key": "возвратов виктор иванович",
+                    "response_id": "920",
+                    "planned_work_date": "2026-04-22",
+                    "planned_work_time": "11:00 - 13:00",
+                    "payment_type": "Отгул",
+                    "task_description": "Исправленная задача",
+                    "justification": "Исправленная причина",
+                    "systems": "Система A",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, correction.status_code)
+        self.assertIn("заявка откорректирована", unquote(correction.headers["location"]).lower())
+
     def test_admin_can_release_planning_lock_without_changing_request_status(self) -> None:
         insert_planned_request(
             self.db_path,
@@ -1354,6 +1600,13 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             planned_date="2026-04-22",
         )
         with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:905', 905, 'фактов федор иванович', 'in_progress', '2026-04-20T10:00:00', '2026-04-20T10:00:00')
+                """
+            )
             conn.execute(
                 """
                 INSERT INTO app_period_lock (lock_type, date_from, date_to, created_by, created_at, comment)

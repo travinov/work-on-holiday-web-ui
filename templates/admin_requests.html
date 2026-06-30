@@ -17,7 +17,15 @@
     table { width: 100%; border-collapse: collapse; }
     th, td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 8px 6px; vertical-align: top; }
     .badge { display: inline-block; font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; }
+    .badge.active { background: #eff6ff; color: #1e40af; border-color: #93c5fd; }
+    .badge.in_progress { background: #fff7ed; color: #9a3412; border-color: #fdba74; }
+    .badge.in_fact { background: #f0fdf4; color: #166534; border-color: #86efac; }
+    .badge.completed { background: #ecfdf5; color: #065f46; border-color: #6ee7b7; }
+    .badge.cancelled { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .status-form { display: grid; gap: 6px; min-width: 180px; }
+    .status-form select, .status-form button { padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; font-size: 13px; }
+    .status-form button { background: #111827; color: #fff; cursor: pointer; }
     a { color: #1d4ed8; text-decoration: none; }
   </style>
 </head>
@@ -59,7 +67,7 @@
             <td>{{ item.full_name }}</td>
             <td>{{ item.planned_work_date_ru or '—' }}</td>
             <td>{{ item.planned_work_time or '—' }}</td>
-            <td><span class="badge">{{ item.status_label }}</span></td>
+            <td><span class="badge {{ item.status }}">{{ item.status_label }}</span></td>
             <td>{{ item.payment_type or '—' }}</td>
             <td>{{ item.task_description or '—' }}</td>
             <td>
@@ -75,7 +83,21 @@
               {% if item.lock_week_label %}<div>Legacy: {{ item.lock_week_label }}</div>{% endif %}
               {% if not item.planning_lock_label and not item.actual_lock_label and not item.lock_week_label %}—{% endif %}
             </td>
-            <td><a href="/employee?admin_mode=1&employee_key={{ item.employee_key }}">Открыть кабинет</a></td>
+            <td>
+              <a href="/employee?admin_mode=1&employee_key={{ item.employee_key }}">Открыть кабинет</a>
+              <form class="status-form" action="/admin/request/status" method="post" style="margin-top: 8px;">
+                <input type="hidden" name="employee_key" value="{{ item.employee_key }}" />
+                <input type="hidden" name="response_id" value="{{ item.response_id }}" />
+                <select name="status" aria-label="Статус заявки">
+                  <option value="active" {% if item.status == 'active' %}selected{% endif %}>Заявка подана</option>
+                  <option value="in_progress" {% if item.status == 'in_progress' %}selected{% endif %}>Принята в работу</option>
+                  <option value="in_fact" {% if item.status == 'in_fact' %}selected{% endif %}>Факт указан</option>
+                  <option value="completed" {% if item.status == 'completed' %}selected{% endif %}>Закрыта</option>
+                  <option value="cancelled" {% if item.status == 'cancelled' %}selected{% endif %}>Отменена</option>
+                </select>
+                <button type="submit">Сменить статус</button>
+              </form>
+            </td>
           </tr>
         {% endfor %}
       </tbody>
