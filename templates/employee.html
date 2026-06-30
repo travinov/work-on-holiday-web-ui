@@ -44,7 +44,7 @@
     .section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 12px; }
     .section-title { margin: 0; font-size: 24px; letter-spacing: -0.03em; }
     .section-note { color: #64748b; font-size: 14px; }
-    .create-request { padding: 0; overflow: hidden; background: #fff; }
+    .create-request { padding: 0; overflow: visible; background: #fff; }
     .create-request summary { list-style: none; cursor: pointer; padding: 0; }
     .create-request summary::-webkit-details-marker { display: none; }
     .create-trigger { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 14px 16px; }
@@ -65,7 +65,7 @@
     .create-actions button { min-height: 42px; padding: 0 16px; font-weight: 700; }
     .create-note { color: #64748b; font-size: 14px; max-width: 58ch; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-top: 10px; }
-    .request-item { padding: 0; overflow: hidden; }
+    .request-item { padding: 0; overflow: visible; }
     .request-item summary { list-style: none; cursor: pointer; padding: 16px; }
     .request-item summary::-webkit-details-marker { display: none; }
     .request-item[open] summary { border-bottom: 1px solid #e5e7eb; }
@@ -78,7 +78,7 @@
     .prewrap { white-space: pre-line; }
     .field-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .tooltip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 999px; border: 1px solid #94a3b8; color: #475569; font-size: 12px; font-weight: 700; cursor: help; background: #fff; }
-    .tooltip .tooltip-text { visibility: hidden; opacity: 0; transition: opacity .15s ease; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); min-width: 220px; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: #111827; color: #fff; font-size: 12px; line-height: 1.35; text-align: left; z-index: 10; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); }
+    .tooltip .tooltip-text { visibility: hidden; opacity: 0; transition: opacity .15s ease; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); width: max-content; min-width: 220px; max-width: min(320px, calc(100vw - 32px)); padding: 8px 10px; border-radius: 8px; background: #111827; color: #fff; font-size: 12px; line-height: 1.35; text-align: left; z-index: 300; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); overflow-wrap: anywhere; }
     .tooltip:hover .tooltip-text, .tooltip:focus .tooltip-text { visibility: visible; opacity: 1; }
 
     .date-input-wrap { position: relative; display: flex; align-items: stretch; gap: 6px; width: 100%; }
@@ -108,6 +108,7 @@
     .system-token-remove { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 999px; background: #e2e8f0 !important; color: #334155 !important; font-size: 14px; line-height: 1; }
     .systems-token-input { flex: 1 1 220px; min-width: 180px; min-height: 28px !important; padding: 3px 0 !important; border: 0 !important; border-radius: 0 !important; outline: none; background: transparent !important; }
     .field-hint { color: #64748b; font-size: 13px; line-height: 1.35; }
+    .duration-hint { color: #0f766e; font-size: 13px; font-weight: 700; margin-top: 4px; }
     @media (max-width: 720px) {
       body { margin: 16px; }
       .hero-title { font-size: 24px; }
@@ -256,7 +257,7 @@
       </div>
     </div>
 
-    <details class="card create-request">
+    <details class="card create-request" {% if create_open %}open{% endif %} data-create-request>
       <summary>
         <div class="create-trigger">
           <div class="create-trigger-main">
@@ -269,7 +270,7 @@
         </div>
       </summary>
       <div class="create-body">
-      <form action="/employee/request/create" method="post">
+      <form action="/employee/request/create" method="post" data-create-request-form>
         <input type="hidden" name="employee_key" value="{{ selected.employee_key }}" />
         <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
         <div class="form-grid">
@@ -299,7 +300,7 @@
             <select name="payment_type">
               <option value="Отгул">Отгул</option>
               {% if not profile or not profile.grade_12_plus %}
-                <option value="Двойная оплата">Двойная оплата</option>
+                <option value="Двойная оплата" selected>Двойная оплата</option>
               {% endif %}
             </select>
             {% if profile and profile.grade_12_plus %}
@@ -396,8 +397,8 @@
                     <span class="tooltip-text">Укажите фактическую дату выхода на работу по этой заявке.</span>
                   </span>
                 </div>
-                <input type="hidden" name="actual_work_date" value="{{ req.actual_work_date_iso or today }}" />
-                <input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+                <input type="hidden" name="actual_work_date" value="{{ req.actual_work_date_iso or req.planned_work_date_iso }}" />
+                <span class="meta">{{ req.actual_work_date_ru or req.planned_work_date_ru or '—' }}</span>
               </div>
               <div class="row" style="margin-top:8px;">
                 <div class="field-group">
@@ -406,7 +407,7 @@
                     <span class="tooltip-text">Формат времени: HH:MM - HH:MM. Пример: 09:00 - 18:00.</span>
                   </span>
                 </div>
-                <input type="text" name="actual_work_time" data-time-mask="true" value="{{ req.actual_work_time or '' }}" placeholder="09:00 - 18:00" required />
+                <input type="text" name="actual_work_time" data-time-mask="true" value="{{ req.actual_work_time or req.planned_work_time or '' }}" placeholder="09:00 - 18:00" required />
               </div>
               <div style="margin-top:10px;">
                 <button type="submit" {% if req.status in ['cancelled', 'completed'] or not req.can_edit_actual %}disabled{% endif %}>Сохранить фактическое время</button>
@@ -547,6 +548,41 @@
       return result;
     }
 
+    function minutesFromTimeRange(value) {
+      const match = /^\s*(\d{1,2})[:.](\d{2})\s*-\s*(\d{1,2})[:.](\d{2})\s*$/.exec(value || "");
+      if (!match) return null;
+      const start = Number(match[1]) * 60 + Number(match[2]);
+      let end = Number(match[3]) * 60 + Number(match[4]);
+      if (end < start) end += 24 * 60;
+      return Math.max(0, end - start);
+    }
+
+    function durationLabel(totalMinutes) {
+      if (totalMinutes === null) return "";
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      return `Итого: ${hours} ч ${String(minutes).padStart(2, "0")} мин`;
+    }
+
+    function normalizeTimeInput(input, force = false) {
+      const previous = input.value;
+      const atEnd = input.selectionStart === previous.length && input.selectionEnd === previous.length;
+      const digitsOnly = /^\d+$/.test(previous.replace(/\s/g, ""));
+      if (!force && !atEnd && !digitsOnly) return;
+      input.value = maskTimeRange(previous);
+    }
+
+    function updateDurationHint(input) {
+      let hint = input.nextElementSibling;
+      if (!hint || !hint.classList.contains("duration-hint")) {
+        hint = document.createElement("div");
+        hint.className = "duration-hint";
+        input.insertAdjacentElement("afterend", hint);
+      }
+      hint.textContent = durationLabel(minutesFromTimeRange(input.value));
+      hint.hidden = !hint.textContent;
+    }
+
     function isoToRuDate(value) {
       const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
       return match ? `${match[3]}/${match[2]}/${match[1]}` : (value || "");
@@ -630,6 +666,7 @@
         }
         input.value = isoToRuDate(isoValue || "");
       };
+      input.setIsoDate = setIsoValue;
 
       const syncHiddenDate = () => {
         input.value = maskRuDate(input.value);
@@ -839,6 +876,10 @@
         addSystems(input.value);
         syncHidden();
       });
+      editor.syncFromHidden = () => {
+        systems = splitSystemsInput(hidden.value);
+        render();
+      };
 
       syncHidden();
       render();
@@ -848,10 +889,107 @@
 
     document.querySelectorAll('input[data-time-mask="true"]').forEach((input) => {
       input.addEventListener("input", () => {
-        input.value = maskTimeRange(input.value);
+        normalizeTimeInput(input);
+        updateDurationHint(input);
+      });
+      input.addEventListener("blur", () => {
+        normalizeTimeInput(input, true);
+        updateDurationHint(input);
       });
       input.form?.addEventListener("submit", () => {
-        input.value = maskTimeRange(input.value);
+        normalizeTimeInput(input, true);
+        updateDurationHint(input);
+      });
+      updateDurationHint(input);
+    });
+
+    const pageLevel = "{{ level }}";
+    const createForm = document.querySelector('[data-create-request-form]');
+    const createDetails = document.querySelector('[data-create-request]');
+    const createDraftKey = createForm ? `work-on-holiday:create-draft:${createForm.elements.employee_key?.value || "unknown"}` : "";
+
+    function getStoredDraft() {
+      if (!createDraftKey) return null;
+      try {
+        return localStorage.getItem(createDraftKey);
+      } catch {
+        return null;
+      }
+    }
+
+    function setStoredDraft(value) {
+      if (!createDraftKey) return;
+      try {
+        localStorage.setItem(createDraftKey, value);
+      } catch {
+        // Draft persistence is a convenience feature; form submit must keep working without it.
+      }
+    }
+
+    function removeStoredDraft() {
+      if (!createDraftKey) return;
+      try {
+        localStorage.removeItem(createDraftKey);
+      } catch {
+        // Ignore storage restrictions.
+      }
+    }
+
+    function saveCreateDraft() {
+      if (!createForm || !createDraftKey) return;
+      const data = {};
+      new FormData(createForm).forEach((value, key) => {
+        data[key] = String(value);
+      });
+      setStoredDraft(JSON.stringify(data));
+    }
+
+    function clearCreateDraft() {
+      removeStoredDraft();
+    }
+
+    function restoreCreateDraft() {
+      if (!createForm || !createDraftKey) return;
+      const raw = getStoredDraft();
+      if (!raw) return;
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      Object.entries(data).forEach(([key, value]) => {
+        const field = createForm.elements[key];
+        if (!field) return;
+        field.value = value;
+        if (field.type === "hidden" && key === "planned_work_date") {
+          const visibleDate = field.parentElement?.querySelector('input[data-date-picker="true"]');
+          if (visibleDate?.setIsoDate) visibleDate.setIsoDate(value);
+        }
+        if (key === "systems") {
+          const editor = createForm.querySelector('[data-systems-editor]');
+          if (editor?.syncFromHidden) editor.syncFromHidden();
+        }
+      });
+      createDetails?.setAttribute("open", "");
+      createForm.querySelectorAll('input[data-time-mask="true"]').forEach((input) => updateDurationHint(input));
+    }
+
+    if (createForm) {
+      createForm.addEventListener("input", saveCreateDraft);
+      createForm.addEventListener("change", saveCreateDraft);
+      if (pageLevel === "error") restoreCreateDraft();
+      if (pageLevel === "success") clearCreateDraft();
+    }
+
+    document.querySelectorAll("form").forEach((form) => {
+      form.addEventListener("submit", () => {
+        if (form === createForm) saveCreateDraft();
+        form.querySelectorAll('button[type="submit"], button:not([type])').forEach((button) => {
+          button.disabled = true;
+          button.dataset.originalText = button.textContent;
+          button.textContent = "Отправка...";
+        });
       });
     });
   </script>

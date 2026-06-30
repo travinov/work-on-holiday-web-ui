@@ -122,6 +122,18 @@ def insert_planned_request(db_path: Path, *, response_id: int, full_name: str, f
         conn.commit()
 
 
+def future_date_iso(days_ahead: int = 30) -> str:
+    return (web_ui.date.today() + web_ui.timedelta(days=days_ahead)).isoformat()
+
+
+def future_week_start(days_ahead: int = 30) -> web_ui.date:
+    anchor = web_ui.date.today() + web_ui.timedelta(days=days_ahead)
+    candidate = anchor + web_ui.timedelta(days=(7 - anchor.weekday()) % 7)
+    if candidate <= web_ui.date.today():
+        candidate += web_ui.timedelta(days=7)
+    return candidate
+
+
 class WeeklyReportingAndLocksTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmpdir = tempfile.TemporaryDirectory()
@@ -297,7 +309,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             response_id=303,
             full_name="Сидоров Сидор Сидорович",
             full_name_key="сидоров сидор сидорович",
-            planned_date="2026-04-22",
+            planned_date="2026-07-22",
         )
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
@@ -322,6 +334,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual("23.04.2026", report_df.iloc[0]["Дата фактического выхода"])
 
     def test_locked_week_blocks_employee_correction_without_admin_auth(self) -> None:
+        correction_date = future_date_iso(44)
         insert_planned_request(
             self.db_path,
             response_id=202,
@@ -348,7 +361,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 data={
                     "employee_key": "петров петр петрович",
                     "response_id": "202",
-                    "planned_work_date": "2026-04-22",
+                    "planned_work_date": correction_date,
                     "planned_work_time": "10:00 - 19:00",
                     "payment_type": "Отгул",
                     "task_description": "Новая задача",
@@ -363,12 +376,15 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn("только администратору", unquote(blocked.headers["location"]).lower())
 
     def test_employee_can_create_new_request_and_it_appears_in_cabinet(self) -> None:
+        planned_seed_date = future_date_iso(26)
+        create_date = future_week_start(27)
+        create_date_iso = create_date.isoformat()
         insert_planned_request(
             self.db_path,
             response_id=909,
             full_name="Новиков Павел Андреевич",
             full_name_key="новиков павел андреевич",
-            planned_date="2026-04-26",
+            planned_date=planned_seed_date,
         )
 
         with patch.object(web_ui, "DB_PATH", self.db_path):
@@ -379,7 +395,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             create_response = client.post(
                 "/employee/request/create",
                 data={
-                    "planned_work_date": "2026-04-27",
+                    "planned_work_date": create_date_iso,
                     "planned_work_time": "19:00 - 22:00",
                     "payment_type": "Двойная оплата",
                     "task_description": "Ночной релиз",
@@ -396,8 +412,8 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
 
         self.assertEqual(200, cabinet.status_code)
         self.assertIn("Ночной релиз", cabinet.text)
-        self.assertIn("27.04.2026", cabinet.text)
-        self.assertIn("понедельник", cabinet.text.lower())
+        self.assertIn(web_ui.to_ru_date(create_date_iso), cabinet.text)
+        self.assertIn(web_ui.to_ru_weekday(create_date_iso), cabinet.text.lower())
         self.assertIn("19:00 - 22:00", cabinet.text)
         self.assertIn("Система B", cabinet.text)
 
@@ -437,12 +453,13 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         run_script_mock.assert_called_once()
 
     def test_index_and_employee_pages_render(self) -> None:
+        planned_date = (future_week_start(30) + web_ui.timedelta(days=2)).isoformat()
         insert_planned_request(
             self.db_path,
             response_id=404,
             full_name="Тестов Тест Тестович",
             full_name_key="тестов тест тестович",
-            planned_date="2026-04-22",
+            planned_date=planned_date,
         )
 
         with patch.object(web_ui, "DB_PATH", self.db_path):
@@ -476,8 +493,8 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn("Создать новую заявку", employee_response.text)
         self.assertIn("Мои заявки", employee_response.text)
         self.assertIn("summary-row", employee_response.text)
-        self.assertIn("22.04.2026", employee_response.text)
-        self.assertIn("среда", employee_response.text.lower())
+        self.assertIn(web_ui.to_ru_date(planned_date), employee_response.text)
+        self.assertIn(web_ui.to_ru_weekday(planned_date), employee_response.text.lower())
         self.assertIn("09:00 - 18:00", employee_response.text)
 
     def test_upload_route_is_removed_with_etl(self) -> None:
@@ -546,6 +563,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             self.assertIn("вход выполнен", unquote(token_login.headers["location"]).lower())
 
     def test_employee_grade_is_used_for_new_web_requests_and_admin_can_update_it(self) -> None:
+        create_date = future_date_iso(31)
         insert_planned_request(
             self.db_path,
             response_id=515,
@@ -565,7 +583,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             create_response = client.post(
                 "/employee/request/create",
                 data={
-                    "planned_work_date": "2026-04-28",
+                    "planned_work_date": create_date,
                     "planned_work_time": "10:00 - 12:00",
                     "payment_type": "Отгул",
                     "task_description": "Проверка профиля",
@@ -609,12 +627,14 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual(0, updated_grade)
 
     def test_high_grade_employee_cannot_choose_double_payment_for_new_request(self) -> None:
+        blocked_date = future_date_iso(32)
+        planned_seed_date = future_date_iso(45)
         insert_planned_request(
             self.db_path,
             response_id=516,
             full_name="Грейдов Денис Сергеевич",
             full_name_key="грейдов денис сергеевич",
-            planned_date="2026-04-22",
+            planned_date=planned_seed_date,
         )
 
         with patch.object(web_ui, "DB_PATH", self.db_path):
@@ -633,7 +653,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             blocked = client.post(
                 "/employee/request/create",
                 data={
-                    "planned_work_date": "2026-04-29",
+                    "planned_work_date": blocked_date,
                     "planned_work_time": "10:00 - 12:00",
                     "payment_type": "Двойная оплата",
                     "task_description": "Недоступная оплата",
@@ -657,12 +677,14 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             self.assertEqual(0, blocked_rows)
 
     def test_non_high_grade_employee_can_choose_double_payment_for_new_request(self) -> None:
+        create_date = future_date_iso(33)
+        planned_seed_date = future_date_iso(46)
         insert_planned_request(
             self.db_path,
             response_id=517,
             full_name="Оплатов Илья Сергеевич",
             full_name_key="оплатов илья сергеевич",
-            planned_date="2026-04-22",
+            planned_date=planned_seed_date,
         )
 
         with patch.object(web_ui, "DB_PATH", self.db_path):
@@ -675,12 +697,12 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
 
             cabinet = client.get("/employee")
             self.assertEqual(200, cabinet.status_code)
-            self.assertIn('<option value="Двойная оплата">Двойная оплата</option>', cabinet.text)
+            self.assertIn('<option value="Двойная оплата" selected>Двойная оплата</option>', cabinet.text)
 
             create_response = client.post(
                 "/employee/request/create",
                 data={
-                    "planned_work_date": "2026-04-29",
+                    "planned_work_date": create_date,
                     "planned_work_time": "10:00 - 12:00",
                     "payment_type": "Двойная оплата",
                     "task_description": "Доступная оплата",
@@ -702,6 +724,176 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                     ("оплатов илья сергеевич", "Доступная оплата"),
                 ).fetchone()[0]
             self.assertEqual("Двойная оплата", payment_type)
+
+    def test_employee_cannot_create_past_request_but_admin_can(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=518,
+            full_name="Прошлов Павел Сергеевич",
+            full_name_key="прошлов павел сергеевич",
+            planned_date=future_date_iso(34),
+        )
+        yesterday = (web_ui.date.today() - web_ui.timedelta(days=1)).isoformat()
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Прошлов Павел Сергеевич"}).status_code)
+
+            blocked = client.post(
+                "/employee/request/create",
+                data={
+                    "planned_work_date": yesterday,
+                    "planned_work_time": "10:00 - 12:00",
+                    "payment_type": "Двойная оплата",
+                    "task_description": "Опоздавшая заявка",
+                    "justification": "Проверка запрета",
+                    "systems": "Система A",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, blocked.status_code)
+        blocked_location = unquote(blocked.headers["location"]).lower()
+        self.assertIn("прошедшую дату", blocked_location)
+        self.assertIn("обратитесь к администратору", blocked_location)
+        self.assertIn("create_open=1", blocked_location)
+
+        with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
+            admin_client = TestClient(web_ui.app)
+            self.assertEqual(303, login_superuser(admin_client).status_code)
+            created = admin_client.post(
+                "/employee/request/create",
+                data={
+                    "employee_key": "прошлов павел сергеевич",
+                    "admin_mode": "1",
+                    "planned_work_date": yesterday,
+                    "planned_work_time": "10:00 - 12:00",
+                    "payment_type": "Двойная оплата",
+                    "task_description": "Опоздавшая заявка",
+                    "justification": "Проверка запрета",
+                    "systems": "Система A",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, created.status_code)
+        self.assertIn("заявка создана", unquote(created.headers["location"]).lower())
+
+    def test_duplicate_employee_request_is_rejected(self) -> None:
+        planned_date = future_date_iso(35)
+        insert_planned_request(
+            self.db_path,
+            response_id=519,
+            full_name="Дублев Денис Сергеевич",
+            full_name_key="дублев денис сергеевич",
+            planned_date=planned_date,
+        )
+
+        request_data = {
+            "planned_work_date": planned_date,
+            "planned_work_time": "10:00 - 12:00",
+            "payment_type": "Двойная оплата",
+            "task_description": "Повторная заявка",
+            "justification": "Проверка дубля",
+            "systems": "Пуаро | ЕФС.Риск-решения",
+        }
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Дублев Денис Сергеевич"}).status_code)
+
+            created = client.post("/employee/request/create", data=request_data, follow_redirects=False)
+            duplicate = client.post("/employee/request/create", data=request_data, follow_redirects=False)
+
+        self.assertEqual(303, created.status_code)
+        self.assertIn("заявка создана", unquote(created.headers["location"]).lower())
+        self.assertEqual(303, duplicate.status_code)
+        duplicate_location = unquote(duplicate.headers["location"]).lower()
+        self.assertIn("такая заявка уже создана", duplicate_location)
+        self.assertIn("create_open=1", duplicate_location)
+
+        with sqlite3.connect(self.db_path) as conn:
+            rows_count = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM survey_responses
+                WHERE full_name_key = ? AND task_description = ?
+                """,
+                ("дублев денис сергеевич", "Повторная заявка"),
+            ).fetchone()[0]
+        self.assertEqual(1, rows_count)
+
+    def test_duplicate_employee_request_by_correction_is_rejected(self) -> None:
+        planned_date = future_date_iso(36)
+        insert_planned_request(
+            self.db_path,
+            response_id=520,
+            full_name="Правкин Павел Сергеевич",
+            full_name_key="правкин павел сергеевич",
+            planned_date=planned_date,
+        )
+        insert_planned_request(
+            self.db_path,
+            response_id=521,
+            full_name="Правкин Павел Сергеевич",
+            full_name_key="правкин павел сергеевич",
+            planned_date=future_date_iso(37),
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                UPDATE survey_responses
+                SET planned_work_time = '10:00 - 12:00',
+                    payment_type = 'Двойная оплата',
+                    task_description = 'Эталонная заявка',
+                    justification = 'Проверка дубля'
+                WHERE response_id = 520;
+                """
+            )
+            conn.execute(
+                """
+                UPDATE survey_responses
+                SET planned_work_time = '13:00 - 15:00',
+                    payment_type = 'Двойная оплата',
+                    task_description = 'Другая заявка',
+                    justification = 'Проверка дубля'
+                WHERE response_id = 521;
+                """
+            )
+            conn.execute("DELETE FROM response_systems WHERE response_id IN (520, 521)")
+            conn.executemany(
+                "INSERT INTO response_systems (response_id, system_order, system_name) VALUES (?, ?, ?)",
+                [(520, 1, "Пуаро"), (520, 2, "ЕФС.Риск-решения"), (521, 1, "Пуаро")],
+            )
+            conn.commit()
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Правкин Павел Сергеевич"}).status_code)
+            duplicate = client.post(
+                "/employee/request/correct",
+                data={
+                    "employee_key": "правкин павел сергеевич",
+                    "response_id": "521",
+                    "planned_work_date": planned_date,
+                    "planned_work_time": "10:00 - 12:00",
+                    "payment_type": "Двойная оплата",
+                    "task_description": "Эталонная заявка",
+                    "justification": "Проверка дубля",
+                    "systems": "Пуаро | ЕФС.Риск-решения",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, duplicate.status_code)
+        duplicate_location = unquote(duplicate.headers["location"]).lower()
+        self.assertIn("такая заявка уже создана", duplicate_location)
+
+        with sqlite3.connect(self.db_path) as conn:
+            override = conn.execute(
+                "SELECT override_task_description FROM app_request_state WHERE response_id = 521",
+            ).fetchone()
+        self.assertIsNone(override)
 
     def test_admin_can_reissue_employee_token(self) -> None:
         insert_planned_request(
@@ -1206,6 +1398,9 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn("secure", response.headers["set-cookie"].lower())
 
     def test_planning_period_lock_blocks_employee_create_but_not_admin(self) -> None:
+        week_start = future_week_start(40)
+        week_end = week_start + web_ui.timedelta(days=6)
+        locked_date = (week_start + web_ui.timedelta(days=5)).isoformat()
         insert_planned_request(
             self.db_path,
             response_id=904,
@@ -1217,8 +1412,9 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             conn.execute(
                 """
                 INSERT INTO app_period_lock (lock_type, date_from, date_to, created_by, created_at, comment)
-                VALUES ('planning', '2026-04-20', '2026-04-26', 'root', '2026-04-20T10:00:00', 'test')
-                """
+                VALUES ('planning', ?, ?, 'root', ?, 'test')
+                """,
+                (week_start.isoformat(), week_end.isoformat(), f"{week_start.isoformat()}T10:00:00"),
             )
             conn.commit()
 
@@ -1228,7 +1424,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             blocked = client.post(
                 "/employee/request/create",
                 data={
-                    "planned_work_date": "2026-04-25",
+                    "planned_work_date": locked_date,
                     "planned_work_time": "10:00 - 12:00",
                     "payment_type": "Отгул",
                     "task_description": "Закрытый период",
@@ -1249,7 +1445,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 data={
                     "employee_key": "локов лев иванович",
                     "admin_mode": "1",
-                    "planned_work_date": "2026-04-25",
+                    "planned_work_date": locked_date,
                     "planned_work_time": "13:00 - 15:00",
                     "payment_type": "Отгул",
                     "task_description": "Админская заявка",
@@ -1387,6 +1583,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual("completed", status)
 
     def test_admin_can_return_in_progress_request_to_active(self) -> None:
+        corrected_date = future_date_iso(41)
         insert_planned_request(
             self.db_path,
             response_id=920,
@@ -1438,7 +1635,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 data={
                     "employee_key": "возвратов виктор иванович",
                     "response_id": "920",
-                    "planned_work_date": "2026-04-22",
+                    "planned_work_date": corrected_date,
                     "planned_work_time": "11:00 - 13:00",
                     "payment_type": "Отгул",
                     "task_description": "Исправленная задача",
@@ -1524,19 +1721,23 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual(1, lock_count)
 
     def test_planning_period_lock_hides_employee_correction_form(self) -> None:
+        week_start = future_week_start(42)
+        week_end = week_start + web_ui.timedelta(days=6)
+        locked_date = (week_start + web_ui.timedelta(days=2)).isoformat()
         insert_planned_request(
             self.db_path,
             response_id=914,
             full_name="Закрытов Захар Иванович",
             full_name_key="закрытов захар иванович",
-            planned_date="2026-04-22",
+            planned_date=locked_date,
         )
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 """
                 INSERT INTO app_period_lock (lock_type, date_from, date_to, created_by, created_at, comment)
-                VALUES ('planning', '2026-04-20', '2026-04-26', 'root', '2026-04-20T10:00:00', 'test')
-                """
+                VALUES ('planning', ?, ?, 'root', ?, 'test')
+                """,
+                (week_start.isoformat(), week_end.isoformat(), f"{week_start.isoformat()}T10:00:00"),
             )
             conn.commit()
 
@@ -1575,7 +1776,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 data={
                     "employee_key": "корректов кирилл иванович",
                     "response_id": "915",
-                    "planned_work_date": "2026-04-30",
+                    "planned_work_date": future_date_iso(43),
                     "planned_work_time": "10:00 - 12:00",
                     "payment_type": "Отгул",
                     "task_description": "Попытка переноса",

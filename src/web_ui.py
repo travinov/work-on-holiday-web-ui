@@ -734,6 +734,61 @@ def move_in_fact_requests_to_completed(conn: sqlite3.Connection, date_from: str,
     return len(rows)
 
 
+def has_duplicate_active_request(
+    conn: sqlite3.Connection,
+    *,
+    employee_key: str,
+    planned_work_date: str,
+    planned_work_time: str,
+    payment_type: str,
+    task_description: str,
+    justification: str,
+    systems: str,
+    exclude_response_id: int | None = None,
+) -> bool:
+    normalized_systems = normalize_systems_text(systems)
+    row = conn.execute(
+        """
+        WITH planned_systems AS (
+            SELECT response_id, GROUP_CONCAT(system_name, ' | ') AS systems
+            FROM (
+                SELECT response_id, system_name
+                FROM response_systems
+                ORDER BY response_id, system_order
+            )
+            GROUP BY response_id
+        )
+        SELECT 1
+        FROM survey_responses r
+        LEFT JOIN app_request_state st ON st.response_id = r.response_id
+        LEFT JOIN planned_systems ps ON ps.response_id = r.response_id
+        WHERE r.request_type = 'Подать заявку'
+          AND r.full_name_key = ?
+          AND COALESCE(st.status, 'active') <> 'cancelled'
+          AND COALESCE(st.override_planned_work_date, r.planned_work_date) = ?
+          AND TRIM(COALESCE(st.override_planned_work_time, r.planned_work_time, '')) = ?
+          AND TRIM(COALESCE(st.override_payment_type, r.payment_type, '')) = ?
+          AND TRIM(COALESCE(st.override_task_description, r.task_description, '')) = ?
+          AND TRIM(COALESCE(st.override_justification, r.justification, '')) = ?
+          AND TRIM(COALESCE(st.override_systems, ps.systems, '')) = ?
+          AND (? IS NULL OR r.response_id <> ?)
+        LIMIT 1;
+        """,
+        (
+            employee_key,
+            planned_work_date,
+            planned_work_time.strip(),
+            payment_type.strip(),
+            task_description.strip(),
+            justification.strip(),
+            normalized_systems,
+            exclude_response_id,
+            exclude_response_id,
+        ),
+    ).fetchone()
+    return row is not None
+
+
 def get_employee_display_name(conn: sqlite3.Connection, employee_key: str) -> str | None:
     row = conn.execute(
         """
@@ -1343,10 +1398,17 @@ def get_authenticated_employee_key(request: Request) -> str | None:
     return employee_session["employee_key"] if employee_session else None
 
 
-def build_employee_redirect(employee_key: str, msg: str, level: str, admin_mode: bool = False) -> RedirectResponse:
+def build_employee_redirect(
+    employee_key: str,
+    msg: str,
+    level: str,
+    admin_mode: bool = False,
+    create_open: bool = False,
+) -> RedirectResponse:
     admin_suffix = "&admin_mode=1" if admin_mode else ""
+    create_suffix = "&create_open=1" if create_open else ""
     return RedirectResponse(
-        url=f"/employee?employee_key={employee_key}&msg={msg}&level={level}{admin_suffix}",
+        url=f"/employee?employee_key={employee_key}&msg={msg}&level={level}{admin_suffix}{create_suffix}",
         status_code=303,
     )
 
@@ -1580,6 +1642,7 @@ def employee_cabinet(
     msg: str | None = None,
     level: str = "info",
     admin_mode: int = 0,
+    create_open: int = 0,
 ) -> HTMLResponse:
     admin_session = get_admin_session(request)
     is_admin = admin_session is not None
@@ -1625,6 +1688,7 @@ def employee_cabinet(
             "profile": profile,
             "pending_employee_key": pending_employee_key,
             "pending_employee_name": pending_employee_name,
+            "create_open": bool(create_open),
         },
     )
 
@@ -1957,12 +2021,26 @@ def employee_create_request(
     if not employee_key:
         return redirect_with_message("/employee", "Не удалось определить сотрудника для создания заявки", "error")
     if not is_admin_mode and authenticated_employee_key != employee_key:
-        return build_employee_redirect(employee_key, "Требуется повторный вход по токену", "error", admin_mode=False)
+        return build_employee_redirect(employee_key, "Требуется повторный вход по токену", "error", admin_mode=False, create_open=True)
 
     try:
-        datetime.strptime(planned_work_date, "%Y-%m-%d")
+        parsed_planned_date = datetime.strptime(planned_work_date, "%Y-%m-%d").date()
     except ValueError:
-        return build_employee_redirect(employee_key, "Некорректная плановая дата", "error", admin_mode=is_admin_mode)
+        return build_employee_redirect(
+            employee_key,
+            "Некорректная плановая дата",
+            "error",
+            admin_mode=is_admin_mode,
+            create_open=True,
+        )
+    if not is_admin_mode and parsed_planned_date < date.today():
+        return build_employee_redirect(
+            employee_key,
+            "Нельзя создать заявку на прошедшую дату. Для поздней заявки обратитесь к администратору.",
+            "error",
+            admin_mode=False,
+            create_open=True,
+        )
 
     if not validate_time_range(planned_work_time):
         return build_employee_redirect(
@@ -1970,6 +2048,7 @@ def employee_create_request(
             "Некорректный формат планового времени",
             "error",
             admin_mode=is_admin_mode,
+            create_open=True,
         )
 
     normalized_payment = payment_type.strip() or "Отгул"
@@ -1986,20 +2065,45 @@ def employee_create_request(
                     "Прием заявок за этот период закрыт администратором. Создание заявки доступно только администратору.",
                     "error",
                     admin_mode=False,
+                    create_open=True,
                 )
 
         full_name = get_employee_display_name(conn, employee_key)
         if not full_name:
-            return build_employee_redirect(employee_key, "Сотрудник не найден", "error", admin_mode=is_admin_mode)
+            return build_employee_redirect(employee_key, "Сотрудник не найден", "error", admin_mode=is_admin_mode, create_open=True)
         employee_profile = get_employee_profile(conn, employee_key)
         if not is_employee_profile_active(employee_profile):
-            return build_employee_redirect(employee_key, "Профиль сотрудника неактивен", "error", admin_mode=is_admin_mode)
+            return build_employee_redirect(
+                employee_key,
+                "Профиль сотрудника неактивен",
+                "error",
+                admin_mode=is_admin_mode,
+                create_open=True,
+            )
         if employee_profile["grade_12_plus"] and normalized_payment == "Двойная оплата":
             return build_employee_redirect(
                 employee_key,
                 "Двойная оплата недоступна для сотрудников с грейдом 12+",
                 "error",
                 admin_mode=is_admin_mode,
+                create_open=True,
+            )
+        if has_duplicate_active_request(
+            conn,
+            employee_key=employee_key,
+            planned_work_date=planned_work_date,
+            planned_work_time=planned_work_time,
+            payment_type=normalized_payment,
+            task_description=task_description,
+            justification=justification,
+            systems=normalize_systems_text(systems),
+        ):
+            return build_employee_redirect(
+                employee_key,
+                "Такая заявка уже создана. Проверьте список заявок ниже.",
+                "error",
+                admin_mode=is_admin_mode,
+                create_open=True,
             )
 
         response_id = get_next_response_id(conn)
@@ -2146,9 +2250,16 @@ def employee_correct_request(
         return build_employee_redirect(employee_key, "Требуется повторный вход по токену", "error", admin_mode=False)
     if planned_work_date:
         try:
-            datetime.strptime(planned_work_date, "%Y-%m-%d")
+            parsed_planned_date = datetime.strptime(planned_work_date, "%Y-%m-%d").date()
         except ValueError:
             return build_employee_redirect(employee_key, "Некорректная плановая дата", "error", admin_mode=is_admin_mode)
+        if not is_admin_mode and parsed_planned_date < date.today():
+            return build_employee_redirect(
+                employee_key,
+                "Нельзя перенести заявку на прошедшую дату. Для поздней заявки обратитесь к администратору.",
+                "error",
+                admin_mode=False,
+            )
 
     if planned_work_time and not validate_time_range(planned_work_time):
         return build_employee_redirect(
@@ -2212,6 +2323,23 @@ def employee_correct_request(
             return build_employee_redirect(
                 employee_key,
                 "Двойная оплата недоступна для сотрудников с грейдом 12+",
+                "error",
+                admin_mode=is_admin_mode,
+            )
+        if has_duplicate_active_request(
+            conn,
+            employee_key=full_name_key,
+            planned_work_date=planned_work_date.strip(),
+            planned_work_time=planned_work_time,
+            payment_type=payment_type.strip() or "Отгул",
+            task_description=task_description,
+            justification=justification,
+            systems=normalize_systems_text(systems),
+            exclude_response_id=response_id,
+        ):
+            return build_employee_redirect(
+                employee_key,
+                "Такая заявка уже создана. Проверьте список заявок ниже.",
                 "error",
                 admin_mode=is_admin_mode,
             )
