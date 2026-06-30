@@ -1834,7 +1834,11 @@ def employee_forgot_token(full_name: str = Form(...)) -> RedirectResponse:
             return redirect_with_message("/employee", "Для сотрудника токен еще не создавался", "error")
         mark_employee_forgot_token(conn, employee["employee_key"])
         conn.commit()
-    return redirect_with_message("/employee", "Запрос на перевыпуск токена отправлен администратору", "success")
+    return redirect_with_message(
+        "/employee",
+        "За получением нового токена обратитесь к администратору!",
+        "token-warning",
+    )
 
 
 @app.post("/admin/employee/reissue-token")

@@ -869,7 +869,9 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 follow_redirects=False,
             )
             self.assertEqual(303, forgot.status_code)
-            self.assertIn("перевыпуск токена", unquote(forgot.headers["location"]).lower())
+            forgot_location = unquote(forgot.headers["location"]).lower()
+            self.assertIn("за получением нового токена обратитесь к администратору", forgot_location)
+            self.assertIn("level=token-warning", forgot_location)
 
         with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
             client = TestClient(web_ui.app)
