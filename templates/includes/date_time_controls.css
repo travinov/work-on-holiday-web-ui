@@ -1,0 +1,20 @@
+    .date-input-wrap { position: relative; display: inline-flex; align-items: stretch; gap: 6px; width: 100%; max-width: 100%; }
+    .date-input-wrap input[data-date-picker="true"] { flex: 1 1 auto; min-width: 0; }
+    .date-picker-button { min-width: 42px; min-height: 42px; background: #fff !important; color: #111827 !important; border: 1px solid #cbd5e1 !important; border-radius: 8px; padding: 0 10px; font-size: 14px; line-height: 1; white-space: nowrap; }
+    .date-picker-popover { position: absolute; top: calc(100% + 8px); left: 0; width: min(288px, calc(100vw - 48px)); padding: 12px; border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; box-shadow: 0 20px 42px rgba(15, 23, 42, .20); z-index: 120; }
+    .date-picker-popover.align-right { left: auto; right: 0; }
+    .date-picker-popover[hidden] { display: none; }
+    .date-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .date-picker-title { font-weight: 700; color: #111827; text-align: center; flex: 1; }
+    .date-picker-nav { min-width: 34px; min-height: 34px; padding: 0 8px; background: #f8fafc !important; color: #111827 !important; border-color: #cbd5e1 !important; }
+    .date-picker-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .date-picker-weekday { font-size: 12px; color: #64748b; text-align: center; padding: 5px 0; }
+    .date-picker-day { min-width: 34px; min-height: 34px; padding: 0; border: 1px solid transparent; border-radius: 10px; background: #fff !important; color: #111827 !important; }
+    .date-picker-day:hover { border-color: #94a3b8; background: #f8fafc !important; }
+    .date-picker-day.outside { color: #94a3b8 !important; }
+    .date-picker-day.today { border-color: #0f766e; }
+    .date-picker-day.selected { background: #111827 !important; color: #fff !important; border-color: #111827; }
+    .field-card .date-input-wrap, .field .date-input-wrap { width: 100%; align-items: stretch; }
+    .field-card .date-picker-button, .field .date-picker-button { min-height: 42px; }
+    .row .date-input-wrap { flex: 1 1 260px; max-width: 360px; }
+    .duration-hint { color: #0f766e; font-size: 13px; font-weight: 700; margin-top: 4px; }

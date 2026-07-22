@@ -508,6 +508,40 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
 
         self.assertEqual(404, response.status_code)
 
+    def test_cancelled_request_hides_actual_save_and_cancel_buttons(self) -> None:
+        planned_date = (future_week_start(30) + web_ui.timedelta(days=2)).isoformat()
+        insert_planned_request(
+            self.db_path,
+            response_id=408,
+            full_name="Отклонов Олег Иванович",
+            full_name_key="отклонов олег иванович",
+            planned_date=planned_date,
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES (
+                    'req:408', 408, 'отклонов олег иванович', 'cancelled',
+                    '2026-04-20T10:00:00', '2026-04-20T10:00:00'
+                )
+                """
+            )
+            conn.commit()
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            login_response = client.post("/employee/login", data={"full_name": "Отклонов Олег Иванович"})
+            employee_response = client.get("/employee")
+
+        self.assertEqual(200, login_response.status_code)
+        self.assertEqual(200, employee_response.status_code)
+        self.assertIn("Отменена", employee_response.text)
+        self.assertIn("Фактически отработанное время", employee_response.text)
+        self.assertNotIn("Сохранить фактическое время", employee_response.text)
+        self.assertNotIn('Перевести в статус "Отменена"', employee_response.text)
+
     def test_employee_first_login_issues_token_and_second_login_requires_token(self) -> None:
         insert_planned_request(
             self.db_path,
@@ -1082,6 +1116,19 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             full_name_key="орлов денис петрович",
             planned_date="2026-04-22",
         )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, actual_work_date,
+                    actual_work_time, created_at, updated_at
+                ) VALUES (
+                    'req:707', 707, 'орлов денис петрович', 'in_fact',
+                    '2026-04-22', '09:00 - 18:00', '2026-04-20T10:00:00', '2026-04-20T10:00:00'
+                )
+                """
+            )
+            conn.commit()
 
         with patch.object(web_ui, "DB_PATH", self.db_path):
             client = TestClient(web_ui.app)
@@ -1122,17 +1169,23 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn("Заявки", requests_response.text)
         self.assertIn("Открыть кабинет", requests_response.text)
         self.assertIn('data-hamburger-menu="true"', requests_response.text)
+        self.assertIn("22.04.2026", requests_response.text)
         self.assertEqual(200, test_data_response.status_code)
         self.assertIn("Генерация тестовых данных", test_data_response.text)
         self.assertIn('data-date-picker="true"', test_data_response.text)
+        self.assertIn('data-time-mask="true"', test_data_response.text)
         self.assertIn('data-hamburger-menu="true"', test_data_response.text)
 
     def test_date_picker_keeps_popover_open_on_internal_clicks(self) -> None:
+        shared_component = (web_ui.TEMPLATES_DIR / "includes" / "date_time_controls.js").read_text(encoding="utf-8")
+        self.assertIn('popover.addEventListener("click"', shared_component)
+        self.assertIn("event.stopPropagation();", shared_component)
+        self.assertIn('prev.addEventListener("click"', shared_component)
+        self.assertIn('next.addEventListener("click"', shared_component)
         for template_name in ("employee.html", "index.html", "admin_test_data.html"):
             template_text = (web_ui.TEMPLATES_DIR / template_name).read_text(encoding="utf-8")
             with self.subTest(template=template_name):
-                self.assertIn('popover.addEventListener("click"', template_text)
-                self.assertIn("event.stopPropagation();", template_text)
+                self.assertIn('includes/date_time_controls.js', template_text)
 
     def test_admin_test_data_page_requires_admin_and_generates_in_fact_batch(self) -> None:
         insert_planned_request(

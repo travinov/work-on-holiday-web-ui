@@ -1110,6 +1110,7 @@ def get_admin_requests_overview() -> list[dict[str, Any]]:
             item["status_label"] = status_label
             item["status"] = status
             item["planned_work_date_ru"] = to_ru_date(item.get("planned_work_date"))
+            item["actual_work_date_ru"] = to_ru_date(item.get("actual_work_date"))
             item["lock_week_label"] = (
                 f"{to_ru_date(item['week_start'])} - {to_ru_date(item['week_end'])}"
                 if item.get("week_start") and item.get("week_end")
