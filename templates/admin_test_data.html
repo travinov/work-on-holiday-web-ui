@@ -34,21 +34,7 @@
     .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
     a { color: #1d4ed8; text-decoration: none; }
 
-    .date-input-wrap { position: relative; display: flex; align-items: center; gap: 8px; }
-    .date-input-wrap input[data-date-picker="true"] { flex: 1; }
-    .date-picker-button { background: #fff !important; color: #111827 !important; border: 1px solid #cbd5e1 !important; white-space: nowrap; }
-    .date-picker-popover { position: absolute; top: calc(100% + 8px); left: 0; width: 288px; padding: 12px; border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; box-shadow: 0 20px 42px rgba(15, 23, 42, .20); z-index: 80; }
-    .date-picker-popover[hidden] { display: none; }
-    .date-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-    .date-picker-title { font-weight: 700; color: #111827; text-align: center; flex: 1; }
-    .date-picker-nav { min-width: 34px; min-height: 34px; padding: 0 8px; background: #f8fafc !important; color: #111827 !important; border-color: #cbd5e1 !important; }
-    .date-picker-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-    .date-picker-weekday { font-size: 12px; color: #64748b; text-align: center; padding: 5px 0; }
-    .date-picker-day { min-width: 34px; min-height: 34px; padding: 0; border: 1px solid transparent; border-radius: 10px; background: #fff !important; color: #111827 !important; }
-    .date-picker-day:hover { border-color: #94a3b8; background: #f8fafc !important; }
-    .date-picker-day.outside { color: #94a3b8 !important; }
-    .date-picker-day.today { border-color: #0f766e; }
-    .date-picker-day.selected { background: #111827 !important; color: #fff !important; border-color: #111827; }
+    {% include "includes/date_time_controls.css" %}
   </style>
 </head>
 <body>
@@ -98,7 +84,7 @@
 
       <div class="field">
         <label>Плановое время</label>
-        <input type="text" name="planned_work_time" value="{{ default_work_time }}" required />
+        <input type="text" name="planned_work_time" value="{{ default_work_time }}" data-time-mask="true" placeholder="10:00 - 14:00" inputmode="numeric" required />
       </div>
 
       <div class="field">
@@ -142,200 +128,7 @@
   </form>
 
   <script>
-    function isoToRuDate(value) {
-      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
-      return match ? `${match[3]}/${match[2]}/${match[1]}` : (value || "");
-    }
-
-    function ruDateToIso(value) {
-      const digits = (value || "").replace(/\D/g, "").slice(0, 8);
-      if (digits.length !== 8) return "";
-      const day = digits.slice(0, 2);
-      const month = digits.slice(2, 4);
-      const year = digits.slice(4, 8);
-      return `${year}-${month}-${day}`;
-    }
-
-    function maskRuDate(value) {
-      const digits = (value || "").replace(/\D/g, "").slice(0, 8);
-      const parts = [];
-      if (digits.length > 0) parts.push(digits.slice(0, 2));
-      if (digits.length > 2) parts.push(digits.slice(2, 4));
-      if (digits.length > 4) parts.push(digits.slice(4, 8));
-      return parts.join("/");
-    }
-
-    const openDatePickers = new Set();
-    const monthNames = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
-    const weekdayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-
-    function isoToDate(value) {
-      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
-      if (!match) return null;
-      return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-    }
-
-    function dateToIso(date) {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-      return `${year}-${month}-${day}`;
-    }
-
-    function closeOtherDatePickers(activePopover) {
-      openDatePickers.forEach((popover) => {
-        if (popover !== activePopover) popover.hidden = true;
-      });
-      openDatePickers.clear();
-      if (activePopover && !activePopover.hidden) openDatePickers.add(activePopover);
-    }
-
-    function attachRuDatePicker(input) {
-      const hidden = input.previousElementSibling;
-      const wrapper = document.createElement("span");
-      wrapper.className = "date-input-wrap";
-      input.parentNode.insertBefore(wrapper, input);
-      wrapper.appendChild(input);
-
-      const pickerButton = document.createElement("button");
-      pickerButton.type = "button";
-      pickerButton.className = "date-picker-button";
-      pickerButton.textContent = "Выбрать";
-      pickerButton.setAttribute("aria-label", "Выбрать дату из календаря");
-      pickerButton.setAttribute("aria-expanded", "false");
-
-      const popover = document.createElement("div");
-      popover.className = "date-picker-popover";
-      popover.hidden = true;
-      popover.setAttribute("role", "dialog");
-      popover.setAttribute("aria-label", "Календарь выбора даты");
-      popover.addEventListener("click", (event) => {
-        event.stopPropagation();
-      });
-
-      wrapper.appendChild(pickerButton);
-      wrapper.appendChild(popover);
-
-      let visibleMonth = isoToDate(hidden && hidden.type === "hidden" ? hidden.value : "") || new Date();
-      visibleMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
-
-      const setIsoValue = (isoValue) => {
-        if (hidden && hidden.type === "hidden") hidden.value = isoValue || "";
-        input.value = isoToRuDate(isoValue || "");
-      };
-
-      const syncHiddenDate = () => {
-        input.value = maskRuDate(input.value);
-        const isoValue = ruDateToIso(input.value);
-        if (hidden && hidden.type === "hidden") hidden.value = isoValue;
-        const parsed = isoToDate(isoValue);
-        if (parsed) visibleMonth = new Date(parsed.getFullYear(), parsed.getMonth(), 1);
-      };
-
-      const closePicker = () => {
-        popover.hidden = true;
-        pickerButton.setAttribute("aria-expanded", "false");
-        openDatePickers.delete(popover);
-      };
-
-      const renderCalendar = () => {
-        const selectedIso = hidden && hidden.type === "hidden" ? hidden.value : ruDateToIso(input.value);
-        const todayIso = dateToIso(new Date());
-        const year = visibleMonth.getFullYear();
-        const month = visibleMonth.getMonth();
-        const firstDay = new Date(year, month, 1);
-        const mondayOffset = (firstDay.getDay() + 6) % 7;
-        const gridStart = new Date(year, month, 1 - mondayOffset);
-
-        popover.innerHTML = "";
-        const head = document.createElement("div");
-        head.className = "date-picker-head";
-
-        const prev = document.createElement("button");
-        prev.type = "button";
-        prev.className = "date-picker-nav";
-        prev.textContent = "<";
-        prev.setAttribute("aria-label", "Предыдущий месяц");
-
-        const title = document.createElement("div");
-        title.className = "date-picker-title";
-        title.textContent = `${monthNames[month]} ${year}`;
-
-        const next = document.createElement("button");
-        next.type = "button";
-        next.className = "date-picker-nav";
-        next.textContent = ">";
-        next.setAttribute("aria-label", "Следующий месяц");
-
-        head.appendChild(prev);
-        head.appendChild(title);
-        head.appendChild(next);
-        popover.appendChild(head);
-
-        const grid = document.createElement("div");
-        grid.className = "date-picker-grid";
-        weekdayNames.forEach((name) => {
-          const weekday = document.createElement("div");
-          weekday.className = "date-picker-weekday";
-          weekday.textContent = name;
-          grid.appendChild(weekday);
-        });
-
-        for (let offset = 0; offset < 42; offset += 1) {
-          const current = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + offset);
-          const currentIso = dateToIso(current);
-          const dayButton = document.createElement("button");
-          dayButton.type = "button";
-          dayButton.className = "date-picker-day";
-          if (current.getMonth() !== month) dayButton.classList.add("outside");
-          if (currentIso === todayIso) dayButton.classList.add("today");
-          if (currentIso === selectedIso) dayButton.classList.add("selected");
-          dayButton.textContent = String(current.getDate());
-          dayButton.setAttribute("aria-label", isoToRuDate(currentIso));
-          dayButton.addEventListener("click", () => {
-            setIsoValue(currentIso);
-            closePicker();
-            input.focus();
-          });
-          grid.appendChild(dayButton);
-        }
-
-        popover.appendChild(grid);
-        prev.addEventListener("click", () => {
-          visibleMonth = new Date(year, month - 1, 1);
-          renderCalendar();
-        });
-        next.addEventListener("click", () => {
-          visibleMonth = new Date(year, month + 1, 1);
-          renderCalendar();
-        });
-      };
-
-      const openPicker = () => {
-        syncHiddenDate();
-        renderCalendar();
-        popover.hidden = false;
-        pickerButton.setAttribute("aria-expanded", "true");
-        closeOtherDatePickers(popover);
-      };
-
-      if (hidden && hidden.type === "hidden") setIsoValue(hidden.value);
-      input.addEventListener("input", syncHiddenDate);
-      input.addEventListener("change", syncHiddenDate);
-      input.form?.addEventListener("submit", syncHiddenDate);
-      pickerButton.addEventListener("click", () => {
-        if (popover.hidden) openPicker();
-        else closePicker();
-      });
-      document.addEventListener("click", (event) => {
-        if (!wrapper.contains(event.target)) closePicker();
-      });
-      document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") closePicker();
-      });
-    }
-
-    document.querySelectorAll('input[data-date-picker="true"]').forEach(attachRuDatePicker);
+    {% include "includes/date_time_controls.js" %}
   </script>
 </body>
 </html>

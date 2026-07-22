@@ -72,7 +72,7 @@
             <td>{{ item.task_description or '—' }}</td>
             <td>
               {% if item.actual_work_date or item.actual_work_time %}
-                {{ item.actual_work_date or '—' }}<br />{{ item.actual_work_time or '' }}
+                {{ item.actual_work_date_ru or '—' }}<br />{{ item.actual_work_time or '' }}
               {% else %}
                 —
               {% endif %}
