@@ -116,8 +116,12 @@ rsync -az --delete \
   --exclude 'generated_exports/' \
   --exclude 'restore_points/' \
   --exclude 'backups/' \
+  --exclude 'data/' \
   $RSYNC_OPTS \
   "$PROJECT_ROOT/" "$SSH_TARGET:$DEPLOY_PATH/"
+
+log "Removing legacy bundled employee data from the remote project"
+"${SSH_BASE[@]}" "$SSH_TARGET" "rm -rf $(shell_quote "$DEPLOY_PATH/data")"
 
 REMOTE_ENV=(
   "HOST=$(shell_quote "$REMOTE_HOST")"
