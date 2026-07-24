@@ -66,8 +66,10 @@
     .create-actions button { min-height: 42px; padding: 0 16px; font-weight: 700; }
     .create-note { color: #64748b; font-size: 14px; max-width: 58ch; }
     .action-grid { display: grid; grid-template-columns: minmax(260px, .72fr) minmax(480px, 1.28fr); gap: 12px; margin-top: 10px; }
-    .action-card { margin: 0; }
-    .actual-grid { display: grid; grid-template-columns: minmax(160px, 196px) minmax(280px, 340px); gap: 10px 12px; align-items: end; justify-content: start; }
+    .action-card { min-width: 0; margin: 0; }
+    .actual-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; }
+    .actual-grid .field-card { min-width: 0; }
+    .actual-grid .read-only-value { max-width: 196px; }
     .correction-grid { display: grid; grid-template-columns: minmax(196px, 220px) minmax(280px, 340px) minmax(220px, 260px); gap: 10px 12px; align-items: start; justify-content: start; }
     .request-item { padding: 0; overflow: visible; }
     .request-item summary { list-style: none; cursor: pointer; padding: 16px; }
