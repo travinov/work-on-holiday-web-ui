@@ -35,7 +35,6 @@
     .fact { border-radius: 18px; background: rgba(255,255,255,.72); border: 1px solid rgba(148,163,184,.22); padding: 14px 16px; }
     .fact-label { font-size: 12px; font-weight: 700; color: #0f766e; text-transform: uppercase; letter-spacing: .08em; }
     .fact-text { margin-top: 6px; color: var(--muted); line-height: 1.4; }
-    .emergency-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
     .role-grid { display: grid; gap: 20px; }
     .role-card { padding: 22px; display: flex; flex-direction: column; gap: 16px; }
     .employee-card {
@@ -49,8 +48,6 @@
     .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
     .button, button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid #0f172a; background: #0f172a; color: #fff; font-weight: 700; cursor: pointer; }
     .button.secondary { background: #fff; color: #0f172a; border-color: #cbd5e1; }
-    .button.emergency-chief { background: #b91c1c; border-color: #991b1b; color: #fff; }
-    .button.emergency-it { background: #ea580c; border-color: #c2410c; color: #fff; }
     .msg { padding: 12px 14px; border-radius: 12px; margin: 0 0 20px; }
     .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
     .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
@@ -58,6 +55,7 @@
     .token-form { display: grid; gap: 10px; }
     .token-form input { width: 100%; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #cbd5e1; background: #fff; }
     .helper { font-size: 14px; color: var(--muted); }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     @media (max-width: 920px) {
       .hero { grid-template-columns: 1fr; }
       .facts { grid-template-columns: 1fr; }
@@ -81,7 +79,7 @@
     </div>
 
     {% if msg %}
-      <div class="msg {{ level }}">{{ msg }}</div>
+      <div class="msg {{ level }}" role="status" aria-live="polite">{{ msg }}</div>
     {% endif %}
 
     <section class="hero">
@@ -101,10 +99,6 @@
             <div class="fact-label">Администрирование</div>
             <div class="fact-text">Пользователи, роли, статусы, токены, отчеты и закрытие периодов.</div>
           </div>
-        </div>
-        <div class="emergency-actions">
-          <a class="button emergency-chief" href="/">Экстренный вызов руководителя Tribe</a>
-          <a class="button emergency-it" href="/">Экстренный вызов IT-лидера Tribe</a>
         </div>
       </div>
 
@@ -145,8 +139,10 @@
             </div>
             {% if superuser_auth_configured %}
               <form action="/superuser/login" method="post" class="token-form">
-                <input type="text" name="superuser_login" placeholder="Логин суперпользователя" autocomplete="username" required />
-                <input type="password" name="superuser_password" placeholder="Пароль суперпользователя" autocomplete="current-password" required />
+                <label class="sr-only" for="superuser-login">Логин суперпользователя</label>
+                <input id="superuser-login" type="text" name="superuser_login" placeholder="Логин суперпользователя" autocomplete="username" required />
+                <label class="sr-only" for="superuser-password">Пароль суперпользователя</label>
+                <input id="superuser-password" type="password" name="superuser_password" placeholder="Пароль суперпользователя" autocomplete="current-password" required />
                 <div class="button-row">
                   <button type="submit">Войти как суперпользователь</button>
                 </div>

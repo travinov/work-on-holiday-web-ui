@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
 
@@ -9,8 +10,19 @@ import pandas as pd
 
 try:
     from src.app_request_state import ensure_app_tables
+    from src.work_time import LUNCH_WARNING, needs_lunch_warning
 except ModuleNotFoundError:
     from app_request_state import ensure_app_tables
+    from work_time import LUNCH_WARNING, needs_lunch_warning
+
+
+def lunch_warning_comment(value: object) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    try:
+        return LUNCH_WARNING if needs_lunch_warning(str(value).strip()) else ""
+    except ValueError:
+        return ""
 
 
 def build_report_dataframe(db_path: str, date_from: date | None = None, date_to: date | None = None) -> pd.DataFrame:
@@ -39,41 +51,29 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
           AND COALESCE(st.override_planned_work_date, r.planned_work_date) IS NOT NULL
           {candidate_date_filter.replace("r.planned_work_date", "COALESCE(st.override_planned_work_date, r.planned_work_date)")}
     ),
-    actual_base AS (
+    actual_dates AS (
         SELECT
             r.full_name_key,
-            r.actual_work_date,
-            COALESCE(r.start_time, '') AS sort_key
+            r.actual_work_date
         FROM survey_responses r
         WHERE r.request_type = 'Указать отработанное время'
           AND r.actual_work_date IS NOT NULL
           AND r.actual_work_time IS NOT NULL
-        UNION ALL
+        UNION
         SELECT
             r.full_name_key,
-            st.actual_work_date,
-            COALESCE(st.updated_at, st.created_at, '') AS sort_key
+            st.actual_work_date
         FROM app_request_state st
         JOIN survey_responses r ON r.response_id = st.response_id
         WHERE st.actual_work_date IS NOT NULL
           AND st.actual_work_time IS NOT NULL
-    ),
-    actual_candidates AS (
-        SELECT
-            ab.*,
-            ROW_NUMBER() OVER (
-                PARTITION BY ab.full_name_key, ab.actual_work_date
-                ORDER BY ab.sort_key DESC
-            ) AS rn
-        FROM actual_base ab
     )
     SELECT
         c.full_name,
         (
             SELECT COUNT(*)
-            FROM actual_candidates ac2
-            WHERE ac2.rn = 1
-              AND ac2.full_name_key = c.full_name_key
+            FROM actual_dates ac2
+            WHERE ac2.full_name_key = c.full_name_key
               AND ac2.actual_work_date BETWEEN date(c.planned_work_date, '-29 day') AND c.planned_work_date
         ) AS exits_last_month,
         c.exit_conditions,
@@ -82,11 +82,11 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
         c.planned_work_date,
         c.planned_work_time
     FROM candidates c
-    WHERE c.request_status <> 'cancelled'
+    WHERE c.request_status IN ('active', 'in_progress', 'in_fact', 'completed')
     ORDER BY c.planned_work_date, c.full_name;
     """
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         ensure_app_tables(conn)
         df = pd.read_sql_query(query, conn, params=params)
 
@@ -100,11 +100,13 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
                 "Обоснование привлечения",
                 "Плановая дата выхода",
                 "Плановое время работ",
+                "Комментарий",
             ]
         )
 
     df["planned_work_date"] = pd.to_datetime(df["planned_work_date"], errors="coerce").dt.strftime("%d.%m.%Y")
     df["exits_last_month"] = pd.to_numeric(df["exits_last_month"], errors="coerce").fillna(0).astype(int)
+    df["comment"] = df["planned_work_time"].map(lunch_warning_comment)
 
     report_df = df.rename(
         columns={
@@ -115,6 +117,7 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
             "justification": "Обоснование привлечения",
             "planned_work_date": "Плановая дата выхода",
             "planned_work_time": "Плановое время работ",
+            "comment": "Комментарий",
         }
     )
 
@@ -127,6 +130,7 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
             "Обоснование привлечения",
             "Плановая дата выхода",
             "Плановое время работ",
+            "Комментарий",
         ]
     ]
 

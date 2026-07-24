@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
 
@@ -9,8 +10,19 @@ import pandas as pd
 
 try:
     from src.app_request_state import ensure_app_tables
+    from src.work_time import LUNCH_WARNING, needs_lunch_warning
 except ModuleNotFoundError:
     from app_request_state import ensure_app_tables
+    from work_time import LUNCH_WARNING, needs_lunch_warning
+
+
+def lunch_warning_comment(value: object) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    try:
+        return LUNCH_WARNING if needs_lunch_warning(str(value).strip()) else ""
+    except ValueError:
+        return ""
 
 
 def build_report_dataframe(db_path: str, date_from: date | None = None, date_to: date | None = None) -> pd.DataFrame:
@@ -24,48 +36,48 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
     query = f"""
     WITH actual_base AS (
         SELECT
+            'web' AS source_kind,
+            st.response_id,
             COALESCE(r.full_name_normalized, r.full_name) AS full_name,
-            r.full_name_key,
+            st.actual_work_date,
+            st.actual_work_time
+        FROM app_request_state st
+        JOIN survey_responses r ON r.response_id = st.response_id
+        WHERE st.actual_work_date IS NOT NULL
+          AND st.actual_work_time IS NOT NULL
+          AND st.status <> 'cancelled'
+          {date_filter.replace("r.actual_work_date", "st.actual_work_date")}
+        UNION ALL
+        SELECT
+            'legacy' AS source_kind,
+            r.response_id,
+            COALESCE(r.full_name_normalized, r.full_name) AS full_name,
             r.actual_work_date,
-            r.actual_work_time,
-            COALESCE(r.start_time, '') AS sort_key
+            r.actual_work_time
         FROM survey_responses r
         WHERE r.request_type = 'Указать отработанное время'
           AND r.actual_work_date IS NOT NULL
           AND r.actual_work_time IS NOT NULL
           {date_filter}
-        UNION ALL
-        SELECT
-            COALESCE(r.full_name_normalized, r.full_name) AS full_name,
-            r.full_name_key,
-            st.actual_work_date,
-            st.actual_work_time,
-            COALESCE(st.updated_at, st.created_at, '') AS sort_key
-        FROM app_request_state st
-        JOIN survey_responses r ON r.response_id = st.response_id
-        WHERE st.actual_work_date IS NOT NULL
-          AND st.actual_work_time IS NOT NULL
-          {date_filter.replace("r.actual_work_date", "st.actual_work_date")}
-    ),
-    candidates AS (
-        SELECT
-            ab.*,
-            ROW_NUMBER() OVER (
-                PARTITION BY ab.full_name_key, ab.actual_work_date
-                ORDER BY ab.sort_key DESC
-            ) AS rn
-        FROM actual_base ab
+          AND NOT EXISTS (
+              SELECT 1
+              FROM app_request_state web_state
+              JOIN survey_responses web_request ON web_request.response_id = web_state.response_id
+              WHERE web_request.full_name_key = r.full_name_key
+                AND web_state.actual_work_date = r.actual_work_date
+                AND web_state.actual_work_time IS NOT NULL
+                AND web_state.status <> 'cancelled'
+          )
     )
     SELECT
-        c.full_name,
-        c.actual_work_date,
-        c.actual_work_time
-    FROM candidates c
-    WHERE c.rn = 1
-    ORDER BY c.actual_work_date, c.full_name;
+        ab.full_name,
+        ab.actual_work_date,
+        ab.actual_work_time
+    FROM actual_base ab
+    ORDER BY ab.actual_work_date, ab.full_name, ab.source_kind DESC, ab.response_id;
     """
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         ensure_app_tables(conn)
         df = pd.read_sql_query(query, conn, params=params)
 
@@ -75,20 +87,23 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
                 "ФИО",
                 "Дата фактического выхода",
                 "Фактически отработанное время",
+                "Комментарий",
             ]
         )
 
     df["actual_work_date"] = pd.to_datetime(df["actual_work_date"], errors="coerce").dt.strftime("%d.%m.%Y")
+    df["comment"] = df["actual_work_time"].map(lunch_warning_comment)
 
     report_df = df.rename(
         columns={
             "full_name": "ФИО",
             "actual_work_date": "Дата фактического выхода",
             "actual_work_time": "Фактически отработанное время",
+            "comment": "Комментарий",
         }
     )
 
-    return report_df[["ФИО", "Дата фактического выхода", "Фактически отработанное время"]]
+    return report_df[["ФИО", "Дата фактического выхода", "Фактически отработанное время", "Комментарий"]]
 
 
 def save_report(report_df: pd.DataFrame, output_path: Path) -> None:

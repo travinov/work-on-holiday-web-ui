@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 from openpyxl.styles import Alignment
+from openpyxl.utils import get_column_letter
 
 from report_first_management import build_report_dataframe as build_report_1
 from report_four_reconciliation import build_report_dataframe as build_report_4
@@ -78,8 +79,18 @@ def write_sheet(writer: pd.ExcelWriter, sheet_name: str, title: str, subtitle: s
     apply_wrap_text_by_header(worksheet, header_row=4, header_name="Перечень АС")
     if sheet_name == "Отчет 1":
         apply_double_payment_grade_highlight_by_header(worksheet, header_row=4, header_name="Условия выхода")
+    last_column = get_column_letter(max(len(report_df.columns), 1))
+    worksheet.auto_filter.ref = f"A4:{last_column}{max(worksheet.max_row, 4)}"
     worksheet.freeze_panes = "A5"
     autosize_columns(worksheet)
+
+
+def build_subtitle(date_from, date_to, prepared_label: str) -> str:
+    if date_from and date_to:
+        period = f"{date_from.strftime('%d.%m.%Y')}–{date_to.strftime('%d.%m.%Y')}"
+    else:
+        period = "все даты"
+    return f"Период: {period}; Дата подготовки: {prepared_label}"
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -89,8 +100,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--date-to", help="Опционально: конец периода по плановой/фактической дате (YYYY-MM-DD)")
     parser.add_argument(
         "--employees-csv",
-        default="data/employees_mock.csv",
-        help="Путь к CSV сотрудников для валидации Отчета 1 (грейд/мобильный)",
+        help="Устаревший параметр совместимости; значение игнорируется",
     )
     parser.add_argument(
         "--output-dir",
@@ -121,6 +131,7 @@ def main() -> None:
         raise ValueError("Нужно указать обе даты: --date-from и --date-to")
     if date_from and date_to and date_from > date_to:
         raise ValueError("date-from не может быть позже date-to")
+    subtitle = build_subtitle(date_from, date_to, prepared_label)
 
     report_1_df = build_report_1(str(db_path), date_from, date_to, employees_csv=args.employees_csv)
     report_2_df = build_report_2(str(db_path), date_from, date_to)
@@ -140,28 +151,28 @@ def main() -> None:
             writer,
             sheet_name="Отчет 1",
             title="Отчет 1 для руководства (плановые заявки)",
-            subtitle=f"Дата подготовки: {prepared_label}",
+            subtitle=subtitle,
             report_df=report_1_df,
         )
         write_sheet(
             writer,
             sheet_name="Отчет 2",
             title="Отчет 2 для заведения заявок (плановые заявки)",
-            subtitle=f"Дата подготовки: {prepared_label}",
+            subtitle=subtitle,
             report_df=report_2_df,
         )
         write_sheet(
             writer,
             sheet_name="Отчет 3",
             title="Отчет 3 для закрытия в Пульсе (фактические выходы)",
-            subtitle=f"Дата подготовки: {prepared_label}",
+            subtitle=subtitle,
             report_df=report_3_df,
         )
         write_sheet(
             writer,
             sheet_name="Отчет 4",
             title="Отчет 4: сверка заявившихся и предоставивших фактическое время",
-            subtitle=f"Дата подготовки: {prepared_label}",
+            subtitle=subtitle,
             report_df=report_4_df,
         )
 

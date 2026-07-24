@@ -17,6 +17,7 @@ def _create_app_request_state_table(conn: sqlite3.Connection, table_name: str = 
         f"""
         CREATE TABLE IF NOT EXISTS {table_name} (
             request_uid TEXT PRIMARY KEY,
+            request_group_id TEXT,
             response_id INTEGER NOT NULL,
             full_name_key TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'in_progress', 'in_fact', 'completed', 'cancelled')),
@@ -46,12 +47,19 @@ def _migrate_app_request_state_statuses(conn: sqlite3.Connection) -> None:
     if "in_progress" in table_sql and "in_fact" in table_sql:
         return
 
+    old_columns = {
+        column[1]
+        for column in conn.execute("PRAGMA table_info(app_request_state)").fetchall()
+    }
+    request_group_id_select = "request_group_id" if "request_group_id" in old_columns else "NULL"
+
     conn.execute("ALTER TABLE app_request_state RENAME TO app_request_state_old;")
     _create_app_request_state_table(conn)
     conn.execute(
-        """
+        f"""
         INSERT INTO app_request_state (
             request_uid,
+            request_group_id,
             response_id,
             full_name_key,
             status,
@@ -71,6 +79,7 @@ def _migrate_app_request_state_statuses(conn: sqlite3.Connection) -> None:
         )
         SELECT
             request_uid,
+            {request_group_id_select},
             response_id,
             full_name_key,
             status,
@@ -119,10 +128,18 @@ def ensure_app_tables(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE app_request_state ADD COLUMN returned_for_correction INTEGER NOT NULL DEFAULT 0 CHECK(returned_for_correction IN (0, 1));"
         )
+    if "request_group_id" not in request_state_columns:
+        conn.execute("ALTER TABLE app_request_state ADD COLUMN request_group_id TEXT;")
     conn.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_app_request_state_full_name_key
         ON app_request_state (full_name_key);
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_app_request_state_request_group_id
+        ON app_request_state (request_group_id);
         """
     )
     conn.execute(

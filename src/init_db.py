@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 try:
@@ -15,7 +16,7 @@ except ModuleNotFoundError:
 def initialize_database(db_path: str | Path) -> Path:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         ensure_core_tables(conn)
         ensure_app_tables(conn)
         conn.commit()

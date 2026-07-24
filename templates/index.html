@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Кабинет администратора</title>
   <style>
+    * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; background: #f8fafc; }
     h1 { margin-bottom: 8px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
@@ -26,13 +27,22 @@
     .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
     .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
     .msg.info { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
-    table { width: 100%; border-collapse: collapse; }
+    .table-wrap { width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+    table { width: 100%; min-width: 620px; border-collapse: collapse; }
     th, td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 8px 6px; }
     a { color: #1d4ed8; text-decoration: none; }
     .field-group { display: inline-flex; align-items: center; gap: 8px; }
     .tooltip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 999px; border: 1px solid #94a3b8; color: #475569; font-size: 12px; font-weight: 700; cursor: help; background: #fff; }
     .tooltip .tooltip-text { visibility: hidden; opacity: 0; transition: opacity .15s ease; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); min-width: 220px; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: #111827; color: #fff; font-size: 12px; line-height: 1.35; text-align: left; z-index: 10; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); }
     .tooltip:hover .tooltip-text, .tooltip:focus .tooltip-text { visibility: visible; opacity: 1; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    @media (max-width: 720px) {
+      body { margin: 16px; }
+      .grid { grid-template-columns: minmax(0, 1fr); }
+      .card { min-width: 0; padding: 14px; }
+      .row { align-items: stretch; }
+      .row > input[type="text"], .row > select, .row > button { width: 100%; min-height: 42px; }
+    }
 
     {% include "includes/date_time_controls.css" %}
   </style>
@@ -61,7 +71,7 @@
   </div>
 
   {% if msg %}
-    <div class="msg {{ level }}">{{ msg }}</div>
+    <div class="msg {{ level }}" role="status" aria-live="polite">{{ msg }}</div>
   {% endif %}
 
   <div class="card" style="margin-bottom: 16px;">
@@ -84,21 +94,25 @@
   <div class="grid">
     <div class="card">
       <h3>Закрыть неделю / период</h3>
-      <form action="/admin/locks/create" method="post">
+      <form action="/admin/locks/create" method="post" data-week-form data-lock-preview-form>
         <div class="row">
-          <select name="lock_type" required>
+          <label class="sr-only" for="lock-type">Тип закрытия периода</label>
+          <select id="lock-type" name="lock_type" required>
             <option value="planning">Закрыть прием заявок</option>
             <option value="actual">Закрыть ввод факта</option>
           </select>
-          <label>С:</label>
-          <input type="hidden" name="date_from" value="{{ default_week_from }}" /><input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
-          <label>По:</label>
-          <input type="hidden" name="date_to" value="{{ default_week_to }}" /><input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
-          <input type="text" name="comment" placeholder="Комментарий" />
+          <label for="lock-week-anchor">Дата внутри недели:</label>
+          <input type="hidden" data-week-anchor value="{{ default_week_from }}" /><input id="lock-week-anchor" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+          <input type="hidden" name="date_from" value="{{ default_week_from }}" />
+          <input type="hidden" name="date_to" value="{{ default_week_to }}" />
+          <input type="text" name="comment" placeholder="Комментарий" aria-label="Комментарий к закрытию периода" />
           <button type="submit">Закрыть</button>
         </div>
+        <div class="meta" data-week-label aria-live="polite"></div>
+        <div class="meta" data-lock-preview aria-live="polite"></div>
       </form>
       {% if period_locks %}
+        <div class="table-wrap" role="region" aria-label="Закрытые периоды" tabindex="0">
         <table style="margin-top: 12px;">
           <thead><tr><th>Тип</th><th>Период</th><th>Кем</th><th>Действие</th></tr></thead>
           <tbody>
@@ -121,25 +135,28 @@
             {% endfor %}
           </tbody>
         </table>
+        </div>
       {% endif %}
     </div>
 
     <div class="card">
       <h3>Общий Excel с отчетами 1-4 за выбранную неделю</h3>
-      <form action="/generate/full" method="post">
+      <form action="/generate/full" method="post" data-week-form>
         <div class="row">
-          <div class="field-group"><label>С:</label><span class="tooltip" tabindex="0">?<span class="tooltip-text">Начало недели для отчета по плановым заявкам.</span></span></div>
-          <input type="hidden" name="date_from" value="{{ default_week_from }}" /><input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
-          <div class="field-group"><label>По:</label><span class="tooltip" tabindex="0">?<span class="tooltip-text">Конец недели для отчета по плановым заявкам. Сам отчет больше не закрывает период автоматически.</span></span></div>
-          <input type="hidden" name="date_to" value="{{ default_week_to }}" /><input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+          <div class="field-group"><label for="report-week-anchor">Дата внутри недели:</label><span class="tooltip" tabindex="0">?<span class="tooltip-text">Выберите любую дату. Система сформирует отчет за неделю с понедельника по воскресенье.</span></span></div>
+          <input type="hidden" data-week-anchor value="{{ default_week_from }}" /><input id="report-week-anchor" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+          <input type="hidden" name="date_from" value="{{ default_week_from }}" />
+          <input type="hidden" name="date_to" value="{{ default_week_to }}" />
           <button type="submit">Сформировать общий Excel</button>
         </div>
+        <div class="meta" data-week-label aria-live="polite"></div>
       </form>
     </div>
   </div>
 
   <div class="card" style="margin-top: 16px;">
     <h3>Готовые файлы отчетов</h3>
+    <div class="table-wrap" role="region" aria-label="Готовые отчеты" tabindex="0">
     <table>
       <thead>
         <tr><th>Файл</th><th>Изменен</th><th>Действие</th></tr>
@@ -154,10 +171,67 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
 
   <script>
     {% include "includes/date_time_controls.js" %}
+
+    function mondaySunday(anchorIso) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(anchorIso || "");
+      if (!match) return null;
+      const anchor = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      const mondayOffset = (anchor.getDay() + 6) % 7;
+      const monday = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() - mondayOffset);
+      const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+      return [dateToIso(monday), dateToIso(sunday)];
+    }
+
+    document.querySelectorAll("[data-week-form]").forEach((form) => {
+      const anchor = form.querySelector("[data-week-anchor]");
+      const visibleAnchor = anchor?.nextElementSibling;
+      const dateFrom = form.elements.date_from;
+      const dateTo = form.elements.date_to;
+      const weekLabel = form.querySelector("[data-week-label]");
+      const lockPreview = form.querySelector("[data-lock-preview]");
+
+      const updateWeek = async () => {
+        const bounds = mondaySunday(anchor?.value);
+        if (!bounds) return;
+        [dateFrom.value, dateTo.value] = bounds;
+        weekLabel.textContent = `Неделя: ${isoToRuDate(bounds[0])} — ${isoToRuDate(bounds[1])}`;
+        if (!lockPreview) return;
+        const params = new URLSearchParams({
+          lock_type: form.elements.lock_type.value,
+          date_from: bounds[0],
+          date_to: bounds[1],
+        });
+        try {
+          const response = await fetch(`/admin/locks/preview?${params}`);
+          const data = await response.json();
+          lockPreview.textContent = data.overlap
+            ? "Эта неделя уже пересекается с закрытым периодом выбранного типа."
+            : `Будет затронуто заявок: ${data.count}`;
+        } catch {
+          lockPreview.textContent = "Не удалось получить предварительный расчет.";
+        }
+      };
+
+      visibleAnchor?.addEventListener("change", updateWeek);
+      form.elements.lock_type?.addEventListener("change", updateWeek);
+      form.addEventListener("submit", (event) => {
+        const bounds = mondaySunday(anchor?.value);
+        if (!bounds) {
+          event.preventDefault();
+          return;
+        }
+        [dateFrom.value, dateTo.value] = bounds;
+        if (lockPreview && !window.confirm(`${weekLabel.textContent}. ${lockPreview.textContent}. Продолжить?`)) {
+          event.preventDefault();
+        }
+      });
+      updateWeek();
+    });
   </script>
 </body>
 </html>

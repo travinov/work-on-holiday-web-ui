@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+from contextlib import closing
 from copy import copy
 from datetime import date, datetime
 from pathlib import Path
@@ -11,12 +12,12 @@ from openpyxl.styles import Alignment
 
 try:
     from src.app_request_state import ensure_app_tables
+    from src.work_time import LUNCH_WARNING, needs_lunch_warning
 except ModuleNotFoundError:
     from app_request_state import ensure_app_tables
+    from work_time import LUNCH_WARNING, needs_lunch_warning
 
-DEFAULT_EMPLOYEES_CSV = "data/employees_mock.csv"
 GRADE_WARNING_TEXT = "Двойная оплата (грейд 12+)"
-MOBILE_MISSING_COMMENT = "Отсутствует мобильный номер телефона в Пульс."
 
 
 def format_systems_value(value: object) -> str:
@@ -31,78 +32,24 @@ def format_systems_value(value: object) -> str:
     return "\n".join([system for system in formatted_systems if system])
 
 
-def normalize_name_key(value: object) -> str | None:
+def lunch_warning_comment(value: object) -> str:
     if value is None or pd.isna(value):
-        return None
-    cleaned = " ".join(str(value).strip().split())
-    if not cleaned:
-        return None
-    return cleaned.lower().replace("ё", "е")
+        return ""
+    try:
+        return LUNCH_WARNING if needs_lunch_warning(str(value).strip()) else ""
+    except ValueError:
+        return ""
 
 
-def clean_text(value: object) -> str | None:
-    if value is None or pd.isna(value):
-        return None
-    text_value = str(value).strip()
-    if not text_value:
-        return None
-    return text_value
-
-
-def load_employee_lookup(employees_csv: str | None) -> pd.DataFrame:
-    if not employees_csv:
-        return pd.DataFrame(columns=["full_name_key", "emp_grade_num", "mobile_phone"])
-
-    csv_path = Path(employees_csv)
-    if not csv_path.exists():
-        return pd.DataFrame(columns=["full_name_key", "emp_grade_num", "mobile_phone"])
-
-    employees_df = pd.read_csv(csv_path, dtype=str)
-    required_cols = {"EMP_FULL_NAME", "EMP_GRADE_NUM", "MOBILE_PHONE_TXT"}
-    if not required_cols.issubset(employees_df.columns):
-        return pd.DataFrame(columns=["full_name_key", "emp_grade_num", "mobile_phone"])
-
-    employees_df["full_name_key"] = employees_df["EMP_FULL_NAME"].map(normalize_name_key)
-    employees_df["emp_grade_num"] = pd.to_numeric(employees_df["EMP_GRADE_NUM"], errors="coerce")
-    employees_df["mobile_phone"] = employees_df["MOBILE_PHONE_TXT"].map(clean_text)
-
-    return (
-        employees_df[["full_name_key", "emp_grade_num", "mobile_phone"]]
-        .dropna(subset=["full_name_key"])
-        .drop_duplicates(subset=["full_name_key"], keep="last")
-    )
-
-
-def apply_employee_validations(df: pd.DataFrame, employees_csv: str | None) -> pd.DataFrame:
+def apply_profile_validations(df: pd.DataFrame) -> pd.DataFrame:
     validated = df.copy()
-    validated["full_name_key_local"] = validated["full_name"].map(normalize_name_key)
-
-    employee_lookup = load_employee_lookup(employees_csv)
-    if employee_lookup.empty:
-        validated["emp_grade_num"] = pd.NA
-        validated["mobile_phone"] = pd.NA
-    else:
-        lookup = employee_lookup.set_index("full_name_key")
-        validated["emp_grade_num"] = validated["full_name_key_local"].map(lookup["emp_grade_num"])
-        validated["mobile_phone"] = validated["full_name_key_local"].map(lookup["mobile_phone"])
-    validated["employee_found"] = validated["emp_grade_num"].notna() | validated["mobile_phone"].notna()
-
     is_double_pay = (
         validated["exit_conditions"].fillna("").astype(str).str.strip().str.lower().eq("двойная оплата")
     )
-    high_grade = pd.to_numeric(validated["emp_grade_num"], errors="coerce").ge(12)
+    high_grade = pd.to_numeric(validated["grade_12_plus"], errors="coerce").fillna(0).eq(1)
     highlight_mask = is_double_pay & high_grade
-
     validated.loc[highlight_mask, "exit_conditions"] = GRADE_WARNING_TEXT
-
-    mobile_missing = (
-        validated["mobile_phone"].isna()
-        | validated["mobile_phone"].astype(str).str.strip().eq("")
-    )
-    comment_mask = is_double_pay & validated["employee_found"] & mobile_missing
-
-    validated["comment"] = ""
-    validated.loc[comment_mask, "comment"] = MOBILE_MISSING_COMMENT
+    validated["comment"] = validated["planned_work_time"].map(lunch_warning_comment)
     return validated
 
 
@@ -110,8 +57,9 @@ def build_report_dataframe(
     db_path: str,
     date_from: date | None = None,
     date_to: date | None = None,
-    employees_csv: str | None = DEFAULT_EMPLOYEES_CSV,
+    employees_csv: str | None = None,
 ) -> pd.DataFrame:
+    del employees_csv  # Deprecated compatibility argument; employee data now comes only from SQLite.
     candidate_date_filter = ""
     params: list[str] = []
 
@@ -131,51 +79,39 @@ def build_report_dataframe(
             COALESCE(st.override_task_description, r.task_description) AS task_description,
             COALESCE(st.override_justification, r.justification) AS justification,
             st.override_systems,
-            COALESCE(st.status, 'active') AS request_status
+            COALESCE(st.status, 'active') AS request_status,
+            COALESCE(ep.grade_12_plus, 0) AS grade_12_plus
         FROM survey_responses r
         LEFT JOIN app_request_state st ON st.response_id = r.response_id
+        LEFT JOIN app_employee_profile ep ON ep.full_name_key = r.full_name_key
         WHERE r.request_type = 'Подать заявку'
           AND COALESCE(st.override_planned_work_date, r.planned_work_date) IS NOT NULL
           {candidate_date_filter.replace("r.planned_work_date", "COALESCE(st.override_planned_work_date, r.planned_work_date)")}
     ),
-    actual_base AS (
+    actual_dates AS (
         SELECT
             r.full_name_key,
-            r.actual_work_date,
-            r.actual_work_time,
-            COALESCE(r.start_time, '') AS sort_key
+            r.actual_work_date
         FROM survey_responses r
         WHERE r.request_type = 'Указать отработанное время'
           AND r.actual_work_date IS NOT NULL
           AND r.actual_work_time IS NOT NULL
-        UNION ALL
+        UNION
         SELECT
             r.full_name_key,
-            st.actual_work_date,
-            st.actual_work_time,
-            COALESCE(st.updated_at, st.created_at, '') AS sort_key
+            st.actual_work_date
         FROM app_request_state st
         JOIN survey_responses r ON r.response_id = st.response_id
         WHERE st.actual_work_date IS NOT NULL
           AND st.actual_work_time IS NOT NULL
-    ),
-    actual_candidates AS (
-        SELECT
-            ab.*,
-            ROW_NUMBER() OVER (
-                PARTITION BY ab.full_name_key, ab.actual_work_date
-                ORDER BY ab.sort_key DESC
-            ) AS rn
-        FROM actual_base ab
     )
     SELECT
         c.response_id,
         c.full_name,
         (
             SELECT COUNT(*)
-            FROM actual_candidates ac2
-            WHERE ac2.rn = 1
-              AND ac2.full_name_key = c.full_name_key
+            FROM actual_dates ac2
+            WHERE ac2.full_name_key = c.full_name_key
               AND ac2.actual_work_date BETWEEN date(c.planned_work_date, '-29 day') AND c.planned_work_date
         ) AS exits_last_month,
         c.exit_conditions,
@@ -183,10 +119,11 @@ def build_report_dataframe(
         c.justification,
         COALESCE(c.override_systems, GROUP_CONCAT(s.system_name, ' | ')) AS systems,
         c.planned_work_date,
-        c.planned_work_time
+        c.planned_work_time,
+        c.grade_12_plus
     FROM candidates c
     LEFT JOIN response_systems s ON s.response_id = c.response_id
-    WHERE c.request_status <> 'cancelled'
+    WHERE c.request_status IN ('active', 'in_progress', 'in_fact', 'completed')
     GROUP BY
         c.response_id,
         c.full_name,
@@ -195,11 +132,12 @@ def build_report_dataframe(
         c.justification,
         c.override_systems,
         c.planned_work_date,
-        c.planned_work_time
+        c.planned_work_time,
+        c.grade_12_plus
     ORDER BY c.planned_work_date, c.full_name;
     """
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         ensure_app_tables(conn)
         df = pd.read_sql_query(query, conn, params=params)
 
@@ -214,13 +152,14 @@ def build_report_dataframe(
                 "Перечень АС",
                 "Плановая дата выхода",
                 "Плановое время работ",
+                "Комментарий",
             ]
         )
 
     df["planned_work_date"] = pd.to_datetime(df["planned_work_date"], errors="coerce").dt.strftime("%d.%m.%Y")
     df["exits_last_month"] = pd.to_numeric(df["exits_last_month"], errors="coerce").fillna(0).astype(int)
     df["systems"] = df["systems"].apply(format_systems_value)
-    df = apply_employee_validations(df, employees_csv)
+    df = apply_profile_validations(df)
 
     report_df = df.rename(
         columns={
@@ -245,9 +184,8 @@ def build_report_dataframe(
         "Перечень АС",
         "Плановая дата выхода",
         "Плановое время работ",
+        "Комментарий",
     ]
-    if "Комментарий" in report_df.columns and report_df["Комментарий"].fillna("").astype(str).str.len().gt(0).any():
-        columns.append("Комментарий")
 
     return report_df[columns]
 
@@ -296,8 +234,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--date-to", help="Опционально: конец периода по плановой дате (YYYY-MM-DD)")
     parser.add_argument(
         "--employees-csv",
-        default=DEFAULT_EMPLOYEES_CSV,
-        help="Путь к CSV сотрудников для валидации (грейд/мобильный)",
+        help="Устаревший параметр совместимости; значение игнорируется",
     )
     parser.add_argument(
         "--output",
@@ -330,7 +267,7 @@ def main() -> None:
     if date_from and date_to:
         print(f"Фильтр по плановой дате: {date_from.isoformat()} .. {date_to.isoformat()}")
     else:
-        print("Фильтр по дате: не задан (все заявки без факта)")
+        print("Фильтр по дате: не задан (все неотмененные заявки)")
     print(f"Строк в отчете: {len(report_df)}")
     print(f"Файл: {output_path}")
 

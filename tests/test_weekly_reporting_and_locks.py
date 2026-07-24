@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import sqlite3
+import os
+import importlib
+import sys
 import tempfile
 import unittest
+import subprocess
+import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import unquote
 from unittest.mock import patch
@@ -10,7 +16,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.app_request_state import ensure_app_tables
-from src import generate_users, init_db, report_first_management, report_second_requests, report_third_closure, web_ui
+from src import generate_users, init_db, web_ui, work_time
 
 
 SUPERUSER_ENV = {
@@ -134,6 +140,122 @@ def future_week_start(days_ahead: int = 30) -> web_ui.date:
     return candidate
 
 
+def insert_legacy_employee(db_path: Path, *, full_name: str, token: str) -> str:
+    full_name_key = web_ui.normalize_name_key(full_name)
+    assert full_name_key is not None
+    now = web_ui.datetime.now().isoformat(timespec="seconds")
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO app_employee_directory (
+                full_name_key, full_name, created_at, updated_at
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (full_name_key, full_name, now, now),
+        )
+        conn.execute(
+            """
+            INSERT INTO app_employee_profile (full_name_key, grade_12_plus, updated_at)
+            VALUES (?, 0, ?)
+            """,
+            (full_name_key, now),
+        )
+        conn.execute(
+            """
+            INSERT INTO app_employee_auth (
+                full_name_key, token_hash, token_issued_at, updated_at
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (full_name_key, web_ui.hash_employee_token(token), now, now),
+        )
+        conn.commit()
+    return full_name_key
+
+
+def xlsx_shared_strings(zip_file: zipfile.ZipFile) -> list[str]:
+    if "xl/sharedStrings.xml" not in zip_file.namelist():
+        return []
+    root = ET.fromstring(zip_file.read("xl/sharedStrings.xml"))
+    namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    shared_strings: list[str] = []
+    for item in root.findall("main:si", namespace):
+        shared_strings.append("".join(node.text or "" for node in item.findall(".//main:t", namespace)))
+    return shared_strings
+
+
+def xlsx_sheet_path(zip_file: zipfile.ZipFile, sheet_name: str) -> str:
+    workbook_ns = {
+        "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    }
+    rels_ns = {"rel": "http://schemas.openxmlformats.org/package/2006/relationships"}
+    workbook_root = ET.fromstring(zip_file.read("xl/workbook.xml"))
+    rels_root = ET.fromstring(zip_file.read("xl/_rels/workbook.xml.rels"))
+    target_id = None
+    for sheet in workbook_root.findall("main:sheets/main:sheet", workbook_ns):
+        if sheet.attrib.get("name") == sheet_name:
+            target_id = sheet.attrib.get(f"{{{workbook_ns['r']}}}id")
+            break
+    assert target_id is not None
+    target_path = None
+    for rel in rels_root.findall("rel:Relationship", rels_ns):
+        if rel.attrib.get("Id") == target_id:
+            target_path = rel.attrib.get("Target")
+            break
+    assert target_path is not None
+    target_path = target_path.lstrip("/")
+    if target_path.startswith("xl/"):
+        return target_path
+    return f"xl/{target_path}"
+
+
+def xlsx_sheet_cells(zip_file: zipfile.ZipFile, sheet_name: str) -> dict[str, str]:
+    shared_strings = xlsx_shared_strings(zip_file)
+    sheet_root = ET.fromstring(zip_file.read(xlsx_sheet_path(zip_file, sheet_name)))
+    namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    cells: dict[str, str] = {}
+    for cell in sheet_root.findall("main:sheetData/main:row/main:c", namespace):
+        ref = cell.attrib["r"]
+        cell_type = cell.attrib.get("t")
+        value_node = cell.find("main:v", namespace)
+        if cell_type == "s" and value_node is not None:
+            cells[ref] = shared_strings[int(value_node.text or "0")]
+        elif cell_type == "inlineStr":
+            text_nodes = cell.findall(".//main:t", namespace)
+            cells[ref] = "".join(node.text or "" for node in text_nodes)
+        elif value_node is not None:
+            cells[ref] = value_node.text or ""
+        else:
+            cells[ref] = ""
+    return cells
+
+
+def xlsx_sheet_rows(zip_file: zipfile.ZipFile, sheet_name: str) -> dict[int, dict[str, str]]:
+    shared_strings = xlsx_shared_strings(zip_file)
+    sheet_root = ET.fromstring(zip_file.read(xlsx_sheet_path(zip_file, sheet_name)))
+    namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    rows: dict[int, dict[str, str]] = {}
+    for row in sheet_root.findall("main:sheetData/main:row", namespace):
+        row_index = int(row.attrib["r"])
+        row_cells: dict[str, str] = {}
+        for cell in row.findall("main:c", namespace):
+            ref = cell.attrib["r"]
+            column = "".join(char for char in ref if char.isalpha())
+            cell_type = cell.attrib.get("t")
+            value_node = cell.find("main:v", namespace)
+            if cell_type == "s" and value_node is not None:
+                row_cells[column] = shared_strings[int(value_node.text or "0")]
+            elif cell_type == "inlineStr":
+                text_nodes = cell.findall(".//main:t", namespace)
+                row_cells[column] = "".join(node.text or "" for node in text_nodes)
+            elif value_node is not None:
+                row_cells[column] = value_node.text or ""
+            else:
+                row_cells[column] = ""
+        rows[row_index] = row_cells
+    return rows
+
+
 class WeeklyReportingAndLocksTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmpdir = tempfile.TemporaryDirectory()
@@ -142,6 +264,30 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.tmpdir.cleanup()
+
+    def test_xlsx_sheet_path_normalizes_relationship_targets_without_double_prefix(self) -> None:
+        workbook_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>
+"""
+        rel_template = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="{target}"/>
+</Relationships>
+"""
+
+        for target in ("/xl/worksheets/sheet1.xml", "xl/worksheets/sheet1.xml", "worksheets/sheet1.xml"):
+            archive_path = Path(self.tmpdir.name) / f"{target.replace('/', '_')}.xlsx"
+            with zipfile.ZipFile(archive_path, "w") as zip_file:
+                zip_file.writestr("xl/workbook.xml", workbook_xml)
+                zip_file.writestr("xl/_rels/workbook.xml.rels", rel_template.format(target=target))
+
+            with zipfile.ZipFile(archive_path) as zip_file:
+                self.assertEqual("xl/worksheets/sheet1.xml", xlsx_sheet_path(zip_file, "Sheet1"))
 
     def test_init_db_creates_web_only_schema_without_ingestion_table(self) -> None:
         initialized_db = Path(self.tmpdir.name) / "initialized.sqlite3"
@@ -197,6 +343,162 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIsNotNone(profile)
         self.assertEqual(1 if first_user.grade_12_plus else 0, profile[0])
 
+    def test_work_time_validation_is_strict_and_splits_overnight_ranges(self) -> None:
+        self.assertFalse(work_time.validate_time_range("00:00 - 00:00"))
+        self.assertTrue(work_time.validate_time_range("23:00 - 00:00"))
+
+        short_range = work_time.parse_work_time("00:00 - 04:59")
+        five_hour_range = work_time.parse_work_time("00:00 - 05:00")
+        five_hour_one_range = work_time.parse_work_time("00:00 - 05:01")
+        overnight_segments = work_time.split_overnight_interval(web_ui.date(2026, 4, 23), "23:00 - 04:00")
+
+        self.assertEqual(299, short_range.duration_minutes)
+        self.assertFalse(short_range.lunch_warning)
+        self.assertTrue(five_hour_range.lunch_warning)
+        self.assertTrue(five_hour_one_range.lunch_warning)
+        self.assertEqual(
+            [
+                (web_ui.date(2026, 4, 23), "23:00 - 00:00"),
+                (web_ui.date(2026, 4, 24), "00:00 - 04:00"),
+            ],
+            [(segment.work_date, segment.time_range) for segment in overnight_segments],
+        )
+        self.assertFalse(
+            any(work_time.parse_work_time(segment.time_range).lunch_warning for segment in overnight_segments)
+        )
+
+        invalid_time_cases = [
+            ("33:00 - 34:00", "Некорректное время"),
+            ("24:00 - 25:00", "Некорректное время"),
+            ("10:60 - 11:00", "Некорректное время"),
+            ("10:00 - 10:00", "Продолжительность рабочего интервала должна быть больше нуля"),
+            ("10:00 -", "Некорректный формат времени"),
+            ("10:00", "Некорректный формат времени"),
+        ]
+        for value, expected_message in invalid_time_cases:
+            with self.subTest(value=value):
+                self.assertFalse(work_time.validate_time_range(value))
+                with self.assertRaisesRegex(ValueError, expected_message):
+                    work_time.parse_work_time(value)
+
+    def test_iso_date_validation_is_strict_for_partial_and_nonexistent_dates(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Некорректная дата, ожидается формат ГГГГ-ММ-ДД"):
+            web_ui.parse_iso_date("2026-05")
+        with self.assertRaisesRegex(ValueError, "Некорректная календарная дата"):
+            web_ui.parse_iso_date("2026-02-30")
+
+        self.assertEqual(web_ui.date(2026, 5, 23), web_ui.parse_iso_date("2026-05-23"))
+
+    def test_midnight_boundary_actual_time_is_supported_but_true_overnight_is_rejected(self) -> None:
+        boundary_range = work_time.parse_work_time("23:00 - 00:00")
+
+        self.assertEqual(60, boundary_range.duration_minutes)
+        self.assertFalse(boundary_range.is_overnight)
+        self.assertEqual("23:00 - 00:00", boundary_range.normalized)
+
+        insert_planned_request(
+            self.db_path,
+            response_id=4101,
+            full_name="Границев Григорий Иванович",
+            full_name_key="границев григорий иванович",
+            planned_date="2026-08-03",
+        )
+        insert_planned_request(
+            self.db_path,
+            response_id=4102,
+            full_name="Границев Григорий Иванович",
+            full_name_key="границев григорий иванович",
+            planned_date="2026-08-03",
+        )
+        insert_planned_request(
+            self.db_path,
+            response_id=4103,
+            full_name="Границев Григорий Иванович",
+            full_name_key="границев григорий иванович",
+            planned_date="2026-08-03",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            now = "2026-07-23T10:00:00"
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:4101', 4101, 'границев григорий иванович', 'in_progress', ?, ?)
+                """,
+                (now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:4102', 4102, 'границев григорий иванович', 'in_progress', ?, ?)
+                """,
+                (now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:4103', 4103, 'границев григорий иванович', 'in_progress', ?, ?)
+                """,
+                (now, now),
+            )
+            conn.commit()
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Границев Григорий Иванович"}).status_code)
+            saved = client.post(
+                "/employee/request/actual",
+                data={
+                    "employee_key": "границев григорий иванович",
+                    "response_id": "4101",
+                    "actual_work_date": "2026-08-03",
+                    "actual_work_time": "23:00 - 00:00",
+                },
+                follow_redirects=False,
+            )
+            rejected = client.post(
+                "/employee/request/actual",
+                data={
+                    "employee_key": "границев григорий иванович",
+                    "response_id": "4102",
+                    "actual_work_date": "2026-08-03",
+                    "actual_work_time": "23:00 - 05:00",
+                },
+                follow_redirects=False,
+            )
+            malformed = client.post(
+                "/employee/request/actual",
+                data={
+                    "employee_key": "границев григорий иванович",
+                    "response_id": "4103",
+                    "actual_work_date": "2026-08-03",
+                    "actual_work_time": "10:60 - 11:00",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, saved.status_code)
+        self.assertIn("фактическое время сохранено", unquote(saved.headers["location"]).lower())
+        self.assertEqual(303, rejected.status_code)
+        self.assertIn("через полночь", unquote(rejected.headers["location"]).lower())
+        self.assertEqual(303, malformed.status_code)
+        self.assertIn("некорректное время", unquote(malformed.headers["location"]).lower())
+        with sqlite3.connect(self.db_path) as conn:
+            saved_row = conn.execute(
+                "SELECT actual_work_date, actual_work_time FROM app_request_state WHERE response_id = 4101"
+            ).fetchone()
+            rejected_row = conn.execute(
+                "SELECT actual_work_date, actual_work_time FROM app_request_state WHERE response_id = 4102"
+            ).fetchone()
+            malformed_row = conn.execute(
+                "SELECT actual_work_date, actual_work_time FROM app_request_state WHERE response_id = 4103"
+            ).fetchone()
+        self.assertEqual(("2026-08-03", "23:00 - 00:00"), saved_row)
+        self.assertEqual((None, None), rejected_row)
+        self.assertEqual((None, None), malformed_row)
+
     def test_ensure_app_tables_migrates_old_request_status_constraint(self) -> None:
         legacy_db = Path(self.tmpdir.name) / "legacy_status.sqlite3"
         with sqlite3.connect(legacy_db) as conn:
@@ -244,6 +546,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual([("req:1", "active", 0), ("req:2", "in_progress", 0)], statuses)
 
     def test_report_week_filter_uses_corrected_planned_date(self) -> None:
+        report_second_requests = importlib.import_module("src.report_second_requests")
         insert_planned_request(
             self.db_path,
             response_id=101,
@@ -274,6 +577,8 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual("22.04.2026", report_df.iloc[0]["Плановая дата выхода"])
 
     def test_planned_reports_include_requests_after_actual_time_is_entered(self) -> None:
+        report_first_management = importlib.import_module("src.report_first_management")
+        report_second_requests = importlib.import_module("src.report_second_requests")
         insert_planned_request(
             self.db_path,
             response_id=102,
@@ -303,7 +608,50 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual("Фактов Федор Иванович", report_1_df.iloc[0]["ФИО"])
         self.assertEqual("Фактов Федор Иванович", report_2_df.iloc[0]["ФИО"])
 
+    def test_new_employee_login_accepts_cyrillic_yo_and_hyphen_and_rejects_invalid_names_but_legacy_login_still_works(self) -> None:
+        valid_name = "Ёлкин Иван-Петрович Сергеевич"
+        legacy_name = "Легаси Имя-Ёжевич"
+        legacy_token = "legacy-token-1"
+        insert_legacy_employee(self.db_path, full_name=legacy_name, token=legacy_token)
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            valid_login = client.post("/employee/login", data={"full_name": valid_name}, follow_redirects=False)
+            invalid_two_parts = client.post(
+                "/employee/login",
+                data={"full_name": "Иванов Иван"},
+                follow_redirects=False,
+            )
+            invalid_latin = client.post(
+                "/employee/login",
+                data={"full_name": "John Doe Smith"},
+                follow_redirects=False,
+            )
+            invalid_digits = client.post(
+                "/employee/login",
+                data={"full_name": "Иванов 1ван Иванович"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(200, valid_login.status_code)
+        self.assertIn("Токен сотрудника создан", valid_login.text)
+        for response in (invalid_two_parts, invalid_latin, invalid_digits):
+            self.assertEqual(303, response.status_code)
+            self.assertIn("новой регистрации", unquote(response.headers["location"]).lower())
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            legacy_client = TestClient(web_ui.app)
+            legacy_login = legacy_client.post(
+                "/employee/login",
+                data={"full_name": legacy_name, "access_token": legacy_token},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, legacy_login.status_code)
+        self.assertIn("вход выполнен", unquote(legacy_login.headers["location"]).lower())
+
     def test_actual_report_accepts_week_range_with_state_overrides(self) -> None:
+        report_third_closure = importlib.import_module("src.report_third_closure")
         insert_planned_request(
             self.db_path,
             response_id=303,
@@ -417,6 +765,199 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn("19:00 - 22:00", cabinet.text)
         self.assertIn("Система B", cabinet.text)
 
+    def test_create_request_rejects_invalid_date_time_payment_and_required_fields_without_inserting_rows(self) -> None:
+        planned_date = future_date_iso(31)
+        insert_planned_request(
+            self.db_path,
+            response_id=1111,
+            full_name="Обязов Олег Иванович",
+            full_name_key="обязов олег иванович",
+            planned_date=planned_date,
+        )
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Обязов Олег Иванович"}).status_code)
+            with sqlite3.connect(self.db_path) as conn:
+                initial_rows = conn.execute("SELECT COUNT(*) FROM survey_responses").fetchone()[0]
+
+            cases = [
+                ("planned_work_date_partial", "Некорректная плановая дата", {"planned_work_date": "2026-05"}),
+                ("planned_work_date_nonexistent", "Некорректная плановая дата", {"planned_work_date": "2026-02-30"}),
+                ("planned_work_time_33", "Некорректное время", {"planned_work_time": "33:00 - 34:00"}),
+                ("planned_work_time_24", "Некорректное время", {"planned_work_time": "24:00 - 25:00"}),
+                ("planned_work_time_minute_60", "Некорректное время", {"planned_work_time": "10:60 - 11:00"}),
+                ("planned_work_time_zero", "Продолжительность рабочего интервала должна быть больше нуля", {"planned_work_time": "10:00 - 10:00"}),
+                ("planned_work_time_partial", "Некорректный формат времени", {"planned_work_time": "10:00 -"}),
+                ("payment_type_blank", "Укажите тип компенсации", {"payment_type": ""}),
+                (
+                    "payment_type_invalid",
+                    "Некорректный тип компенсации. Допустимые значения: Отгул, Двойная оплата",
+                    {"payment_type": "Бонусом"},
+                ),
+                ("task_description", "Укажите задачу", {"task_description": ""}),
+                ("justification", "Укажите обоснование", {"justification": ""}),
+                ("systems", "Укажите хотя бы одну систему", {"systems": ""}),
+            ]
+            for field_name, expected_message, overrides in cases:
+                with self.subTest(field=field_name):
+                    response = client.post(
+                        "/employee/request/create",
+                        data={
+                            "planned_work_date": planned_date,
+                            "planned_work_time": "10:00 - 12:00",
+                            "payment_type": "Отгул",
+                            "task_description": "Задача",
+                            "justification": "Причина",
+                            "systems": "Система A",
+                            **overrides,
+                        },
+                        follow_redirects=False,
+                    )
+                    self.assertEqual(303, response.status_code)
+                    self.assertIn(expected_message.lower(), unquote(response.headers["location"]).lower())
+                    with sqlite3.connect(self.db_path) as conn:
+                        rows_after = conn.execute("SELECT COUNT(*) FROM survey_responses").fetchone()[0]
+                    self.assertEqual(initial_rows, rows_after)
+
+    def test_create_request_splits_overnight_request_and_rejects_locked_second_segment(self) -> None:
+        planned_date = future_date_iso(32)
+        locked_date = (web_ui.date.fromisoformat(planned_date) + web_ui.timedelta(days=1)).isoformat()
+        insert_planned_request(
+            self.db_path,
+            response_id=1112,
+            full_name="Ночной Никита Иванович",
+            full_name_key="ночной никита иванович",
+            planned_date=planned_date,
+        )
+        insert_planned_request(
+            self.db_path,
+            response_id=1113,
+            full_name="Ночной Никита Иванович",
+            full_name_key="ночной никита иванович",
+            planned_date=locked_date,
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_period_lock (lock_type, date_from, date_to, created_by, created_at, comment)
+                VALUES ('planning', ?, ?, 'root', '2026-04-20T10:00:00', 'locked second segment')
+                """,
+                (locked_date, locked_date),
+            )
+            conn.commit()
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Ночной Никита Иванович"}).status_code)
+            created = client.post(
+                "/employee/request/create",
+                data={
+                    "planned_work_date": planned_date,
+                    "planned_work_time": "23:00 - 05:00",
+                    "payment_type": "Отгул",
+                    "task_description": "Ночной релиз",
+                    "justification": "Окно сопровождения",
+                    "systems": "Система A",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, created.status_code)
+        self.assertIn("прием заявок за этот период закрыт", unquote(created.headers["location"]).lower())
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT response_id
+                FROM survey_responses
+                WHERE full_name_key = ?
+                  AND task_description = 'Ночной релиз'
+                """,
+                ("ночной никита иванович",),
+            ).fetchall()
+            states = conn.execute(
+                """
+                SELECT response_id
+                FROM app_request_state
+                WHERE full_name_key = ?
+                  AND override_task_description = 'Ночной релиз'
+                """,
+                ("ночной никита иванович",),
+            ).fetchall()
+
+        self.assertEqual(0, len(rows))
+        self.assertEqual(0, len(states))
+
+    def test_employee_actual_time_uses_planned_date_and_rejects_overnight(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=1116,
+            full_name="Фактилов Федор Иванович",
+            full_name_key="фактилов федор иванович",
+            planned_date="2026-04-22",
+        )
+        insert_planned_request(
+            self.db_path,
+            response_id=1117,
+            full_name="Фактилов Федор Иванович",
+            full_name_key="фактилов федор иванович",
+            planned_date="2026-04-23",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:1116', 1116, 'фактилов федор иванович', 'in_progress', '2026-04-20T10:00:00', '2026-04-20T10:00:00')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:1117', 1117, 'фактилов федор иванович', 'in_progress', '2026-04-20T10:00:00', '2026-04-20T10:00:00')
+                """
+            )
+            conn.commit()
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Фактилов Федор Иванович"}).status_code)
+            saved = client.post(
+                "/employee/request/actual",
+                data={
+                    "employee_key": "фактилов федор иванович",
+                    "response_id": "1116",
+                    "actual_work_date": "2026-04-30",
+                    "actual_work_time": "10:00 - 12:00",
+                },
+                follow_redirects=False,
+            )
+            rejected = client.post(
+                "/employee/request/actual",
+                data={
+                    "employee_key": "фактилов федор иванович",
+                    "response_id": "1117",
+                    "actual_work_date": "2026-04-30",
+                    "actual_work_time": "23:00 - 05:00",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, saved.status_code)
+        self.assertIn("фактическое время сохранено", unquote(saved.headers["location"]).lower())
+        self.assertEqual(303, rejected.status_code)
+        self.assertIn("через полночь", unquote(rejected.headers["location"]).lower())
+        with sqlite3.connect(self.db_path) as conn:
+            actual_row = conn.execute(
+                "SELECT actual_work_date, actual_work_time FROM app_request_state WHERE response_id = 1116"
+            ).fetchone()
+            rejected_row = conn.execute(
+                "SELECT actual_work_date, actual_work_time FROM app_request_state WHERE response_id = 1117"
+            ).fetchone()
+        self.assertEqual(("2026-04-22", "10:00 - 12:00"), actual_row)
+        self.assertEqual((None, None), rejected_row)
+
     def test_full_report_generation_requires_admin_auth(self) -> None:
         with patch.object(web_ui, "DB_PATH", self.db_path):
             client = TestClient(web_ui.app)
@@ -486,9 +1027,13 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn('placeholder="ДД/ММ/ГГГГ"', employee_response.text)
         self.assertIn('data-date-picker="true"', employee_response.text)
         self.assertIn('data-time-mask="true"', employee_response.text)
+        self.assertIn('data-time-start', employee_response.text)
+        self.assertIn('data-time-end', employee_response.text)
+        self.assertIn('data-overnight-preview', employee_response.text)
         self.assertIn('data-systems-editor', employee_response.text)
         self.assertIn("После ввода одной АС нажмите Enter или Tab", employee_response.text)
         self.assertIn('data-hamburger-menu="true"', employee_response.text)
+        self.assertNotIn("data-emergency", employee_response.text)
         self.assertIn("<details", employee_response.text)
         self.assertIn("Создать новую заявку", employee_response.text)
         self.assertIn("Мои заявки", employee_response.text)
@@ -541,6 +1086,26 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn("Фактически отработанное время", employee_response.text)
         self.assertNotIn("Сохранить фактическое время", employee_response.text)
         self.assertNotIn('Перевести в статус "Отменена"', employee_response.text)
+
+    def test_active_request_hides_actual_form_and_shows_reason(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=1115,
+            full_name="Активов Андрей Иванович",
+            full_name_key="активов андрей иванович",
+            planned_date="2026-04-22",
+        )
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Активов Андрей Иванович"}).status_code)
+            page = client.get("/employee")
+
+        self.assertEqual(200, page.status_code)
+        self.assertIn("Фактически отработанное время", page.text)
+        self.assertNotIn('action="/employee/request/actual"', page.text)
+        self.assertIn("Ввод фактического времени сейчас недоступен.", page.text)
+        self.assertNotIn("Сохранить фактическое время", page.text)
 
     def test_employee_first_login_issues_token_and_second_login_requires_token(self) -> None:
         insert_planned_request(
@@ -1167,6 +1732,10 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn('data-hamburger-menu="true"', users_response.text)
         self.assertEqual(200, requests_response.status_code)
         self.assertIn("Заявки", requests_response.text)
+        self.assertIn('aria-label="Фильтры заявок"', requests_response.text)
+        self.assertIn('id="request-search"', requests_response.text)
+        self.assertIn('id="request-status-filter"', requests_response.text)
+        self.assertIn('id="request-date-filter"', requests_response.text)
         self.assertIn("Открыть кабинет", requests_response.text)
         self.assertIn('data-hamburger-menu="true"', requests_response.text)
         self.assertIn("22.04.2026", requests_response.text)
@@ -1320,6 +1889,166 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertTrue(all(row["actual_work_time"] == "10:00 - 14:00" for row in states))
         self.assertEqual(["Пуаро | ЕФС.Риск-решения", "Пуаро | ЕФС.Риск-решения"], [row["systems"] for row in systems])
 
+    def test_admin_test_data_rejects_invalid_values_without_creating_rows(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=1201,
+            full_name="Админов Андрей Иванович",
+            full_name_key="админов андрей иванович",
+            planned_date="2026-05-23",
+        )
+
+        with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(303, login_superuser(client).status_code)
+            cases = [
+                ("date_partial", {"test_work_date": "2026-05"}, "Некорректная дата тестовых заявок"),
+                ("date_nonexistent", {"test_work_date": "2026-02-30"}, "Некорректная дата тестовых заявок"),
+                ("time_overnight", {"planned_work_time": "23:00 - 05:00"}, "Ночной интервал нельзя создать одной тестовой заявкой"),
+                ("mode_invalid", {"generation_mode": "bogus"}, "Некорректный режим генерации"),
+                ("time_invalid", {"planned_work_time": "10:00 -"}, "Некорректный формат времени"),
+                ("employee_keys_empty", {"employee_keys": []}, "Выберите хотя бы одного сотрудника"),
+                ("systems_empty", {"systems": "   "}, "Укажите хотя бы одну АС"),
+                ("task_empty", {"task_description": ""}, "Укажите задачу"),
+                ("justification_empty", {"justification": ""}, "Укажите обоснование"),
+            ]
+
+            for case_name, overrides, expected_message in cases:
+                with self.subTest(case=case_name):
+                    response = client.post(
+                        "/admin/test-data",
+                        data={
+                            "test_work_date": "2026-05-23",
+                            "generation_mode": "plan_and_actual",
+                            "employee_keys": ["админов андрей иванович"],
+                            "planned_work_time": "10:00 - 14:00",
+                            "task_description": "сопровождение релиза",
+                            "justification": "технологическое окно",
+                            "systems": "Пуаро | ЕФС.Риск-решения",
+                            **overrides,
+                        },
+                        follow_redirects=False,
+                    )
+                    self.assertEqual(303, response.status_code)
+                    self.assertIn(expected_message.lower(), unquote(response.headers["location"]).lower())
+
+                    with sqlite3.connect(self.db_path) as conn:
+                        generated_rows = conn.execute(
+                            """
+                            SELECT COUNT(*)
+                            FROM survey_responses
+                            WHERE source_file LIKE 'admin_test_data:%'
+                            """
+                        ).fetchone()[0]
+                        old_row = conn.execute(
+                            "SELECT 1 FROM survey_responses WHERE response_id = 1201"
+                        ).fetchone()
+                        self.assertEqual(0, generated_rows)
+                        self.assertIsNotNone(old_row)
+                        web_ui.delete_admin_test_data_for_date(conn, "2026-05-23")
+                        conn.commit()
+
+    def test_employee_request_correction_rejects_invalid_input_without_side_effects(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=925,
+            full_name="Проверкин Павел Иванович",
+            full_name_key="проверкин павел иванович",
+            planned_date="2026-04-22",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status,
+                    override_planned_work_date, override_planned_work_time,
+                    override_payment_type, override_task_description,
+                    override_justification, override_systems, created_at, updated_at
+                ) VALUES (
+                    'req:925', 925, 'проверкин павел иванович', 'active',
+                    '2026-04-24', '09:00 - 18:00',
+                    'Отгул', 'Старая задача',
+                    'Старое обоснование', 'Система A', '2026-04-20T10:00:00', '2026-04-20T10:00:00'
+                )
+                """
+            )
+            conn.commit()
+            initial_state = conn.execute(
+                """
+                SELECT
+                    status,
+                    override_planned_work_date,
+                    override_planned_work_time,
+                    override_payment_type,
+                    override_task_description,
+                    override_justification,
+                    override_systems
+                FROM app_request_state
+                WHERE response_id = 925
+                """
+            ).fetchone()
+
+        cases = [
+            ("date_nonexistent", {"planned_work_date": "2026-02-30"}, "Некорректная плановая дата"),
+            ("date_partial", {"planned_work_date": "2026-04"}, "Некорректная плановая дата"),
+            ("time_invalid_hour", {"planned_work_time": "33:00 - 34:00"}, "Некорректное время"),
+            ("time_zero_interval", {"planned_work_time": "10:00 - 10:00"}, "Продолжительность рабочего интервала должна быть больше нуля"),
+            (
+                "time_overnight",
+                {"planned_work_time": "23:00 - 05:00"},
+                "Ночной интервал оформляется двумя заявками. Создайте новую заявку с нужным интервалом.",
+            ),
+            (
+                "payment_unknown",
+                {"payment_type": "Бонус"},
+                "Некорректный тип компенсации. Допустимые значения: Отгул, Двойная оплата",
+            ),
+            ("task_empty", {"task_description": ""}, "Укажите задачу"),
+            ("justification_empty", {"justification": ""}, "Укажите обоснование"),
+            ("systems_empty", {"systems": "   "}, "Укажите хотя бы одну систему"),
+        ]
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Проверкин Павел Иванович"}).status_code)
+
+            for case_name, overrides, expected_message in cases:
+                with self.subTest(case=case_name):
+                    response = client.post(
+                        "/employee/request/correct",
+                        data={
+                            "employee_key": "проверкин павел иванович",
+                            "response_id": "925",
+                            "planned_work_date": future_date_iso(30),
+                            "planned_work_time": "10:00 - 12:00",
+                            "payment_type": "Отгул",
+                            "task_description": "Новая задача",
+                            "justification": "Новое обоснование",
+                            "systems": "Система B",
+                            **overrides,
+                        },
+                        follow_redirects=False,
+                    )
+
+                    self.assertEqual(303, response.status_code)
+                    self.assertIn(expected_message.lower(), unquote(response.headers["location"]).lower())
+
+                    with sqlite3.connect(self.db_path) as conn:
+                        current_state = conn.execute(
+                            """
+                            SELECT
+                                status,
+                                override_planned_work_date,
+                                override_planned_work_time,
+                                override_payment_type,
+                                override_task_description,
+                                override_justification,
+                                override_systems
+                            FROM app_request_state
+                            WHERE response_id = 925
+                            """
+                        ).fetchone()
+                    self.assertEqual(initial_state, current_state)
 
     def test_app_tables_include_user_roles_status_and_period_locks(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
@@ -1701,6 +2430,92 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual(303, correction.status_code)
         self.assertIn("заявка откорректирована", unquote(correction.headers["location"]).lower())
 
+    def test_admin_invalid_status_transitions_and_completed_without_fact_are_rejected(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=1121,
+            full_name="Статусов Степан Иванович",
+            full_name_key="статусов степан иванович",
+            planned_date="2026-04-22",
+        )
+        insert_planned_request(
+            self.db_path,
+            response_id=1122,
+            full_name="Статусов Степан Иванович",
+            full_name_key="статусов степан иванович",
+            planned_date="2026-04-23",
+        )
+        insert_planned_request(
+            self.db_path,
+            response_id=1123,
+            full_name="Статусов Степан Иванович",
+            full_name_key="статусов степан иванович",
+            planned_date="2026-04-24",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:1121', 1121, 'статусов степан иванович', 'active', '2026-04-20T10:00:00', '2026-04-20T10:00:00')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:1122', 1122, 'статусов степан иванович', 'cancelled', '2026-04-20T10:00:00', '2026-04-20T10:00:00')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:1123', 1123, 'статусов степан иванович', 'in_fact', '2026-04-20T10:00:00', '2026-04-20T10:00:00')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO app_period_lock (lock_type, date_from, date_to, created_by, created_at, comment)
+                VALUES ('planning', '2026-04-20', '2026-04-26', 'root', '2026-04-20T10:00:00', 'locked')
+                """
+            )
+            conn.commit()
+
+        with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(303, login_superuser(client).status_code)
+            invalid = client.post(
+                "/admin/request/status",
+                data={"employee_key": "статусов степан иванович", "response_id": "1121", "status": "completed"},
+                follow_redirects=False,
+            )
+            cancelled_restore = client.post(
+                "/admin/request/status",
+                data={"employee_key": "статусов степан иванович", "response_id": "1122", "status": "active"},
+                follow_redirects=False,
+            )
+            completed_without_fact = client.post(
+                "/admin/request/status",
+                data={"employee_key": "статусов степан иванович", "response_id": "1123", "status": "completed"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, invalid.status_code)
+        self.assertIn("недопустимый переход статуса", unquote(invalid.headers["location"]).lower())
+        self.assertEqual(303, cancelled_restore.status_code)
+        self.assertIn("статус заявки обновлен", unquote(cancelled_restore.headers["location"]).lower())
+        self.assertEqual(303, completed_without_fact.status_code)
+        self.assertIn(
+            "для статуса факт указан или закрыта обязательны дата и корректный интервал факта",
+            unquote(completed_without_fact.headers["location"]).lower(),
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            invalid_status = conn.execute("SELECT status FROM app_request_state WHERE response_id = 1121").fetchone()[0]
+            restored_status = conn.execute("SELECT status FROM app_request_state WHERE response_id = 1122").fetchone()[0]
+        self.assertEqual("active", invalid_status)
+        self.assertEqual("in_progress", restored_status)
+
     def test_admin_can_release_planning_lock_without_changing_request_status(self) -> None:
         insert_planned_request(
             self.db_path,
@@ -1747,6 +2562,52 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             ).fetchone()[0]
         self.assertEqual(0, lock_count)
         self.assertEqual("cancelled", status)
+
+    def test_overlapping_same_type_week_lock_is_rejected(self) -> None:
+        week_start = future_week_start(43)
+        week_end = week_start + web_ui.timedelta(days=6)
+        insert_planned_request(
+            self.db_path,
+            response_id=1114,
+            full_name="Периодов Павел Иванович",
+            full_name_key="периодов павел иванович",
+            planned_date=(week_start + web_ui.timedelta(days=2)).isoformat(),
+        )
+
+        with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(303, login_superuser(client).status_code)
+            preview = client.get(
+                "/admin/locks/preview",
+                params={"lock_type": "planning", "date_from": week_start.isoformat(), "date_to": week_end.isoformat()},
+            )
+            created = client.post(
+                "/admin/locks/create",
+                data={
+                    "lock_type": "planning",
+                    "date_from": week_start.isoformat(),
+                    "date_to": week_end.isoformat(),
+                    "comment": "first lock",
+                },
+                follow_redirects=False,
+            )
+            overlapping = client.post(
+                "/admin/locks/create",
+                data={
+                    "lock_type": "planning",
+                    "date_from": week_start.isoformat(),
+                    "date_to": week_end.isoformat(),
+                    "comment": "second lock",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(200, preview.status_code)
+        self.assertEqual({"count": 1, "overlap": False, "date_from": week_start.isoformat(), "date_to": week_end.isoformat()}, preview.json())
+        self.assertEqual(303, created.status_code)
+        self.assertIn("период приема заявок закрыт", unquote(created.headers["location"]).lower())
+        self.assertEqual(303, overlapping.status_code)
+        self.assertIn("пересекается", unquote(overlapping.headers["location"]).lower())
 
     def test_admin_cannot_release_actual_lock_through_planning_unlock(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
@@ -1802,7 +2663,8 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual(200, page.status_code)
         self.assertIn("Прием заявок за этот период закрыт", page.text)
         self.assertNotIn('action="/employee/request/correct"', page.text)
-        self.assertIn('action="/employee/request/actual"', page.text)
+        self.assertNotIn('action="/employee/request/actual"', page.text)
+        self.assertIn("Ввод фактического времени сейчас недоступен.", page.text)
 
     def test_planning_period_lock_blocks_employee_correction_from_locked_current_date(self) -> None:
         insert_planned_request(
@@ -1937,6 +2799,430 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual("cancelled", unlocked_status)
         self.assertIsNone(locked_state)
         self.assertEqual("archived", user_status)
+
+    def test_weekend_reports_use_db_grade_profile_preserve_web_facts_and_include_period_subtitle(self) -> None:
+        report_date = "2026-04-22"
+        report_range_start = "2026-04-20"
+        report_range_end = "2026-04-26"
+        planned_name = "Отчетов Олег Иванович"
+        planned_key = "отчетов олег иванович"
+        now = "2026-04-20T10:00:00"
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_employee_profile (full_name_key, grade_12_plus, updated_at)
+                VALUES (?, 1, ?)
+                """,
+                (planned_key, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO survey_responses (
+                    response_id, source_row, start_time, full_name, full_name_normalized, full_name_key,
+                    request_type, payment_type, task_description, justification,
+                    planned_work_date, planned_work_time, target_work_date, source_file
+                ) VALUES (
+                    2001, 2001, ?, ?, ?, ?, 'Подать заявку', 'Двойная оплата', 'grade-row', 'reason',
+                    ?, '10:00 - 15:30', ?, 'manual:grade'
+                )
+                """,
+                (now, planned_name, planned_name, planned_key, report_date, report_date),
+            )
+            conn.execute(
+                """
+                INSERT INTO response_systems (response_id, system_order, system_name)
+                VALUES (2001, 1, 'Система A')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO survey_responses (
+                    response_id, source_row, start_time, full_name, full_name_normalized, full_name_key,
+                    request_type, payment_type, task_description, justification,
+                    planned_work_date, planned_work_time, target_work_date, source_file
+                ) VALUES (
+                    2002, 2002, ?, ?, ?, ?, 'Подать заявку', 'Отгул', 'fact-a', 'reason-a',
+                    ?, '09:00 - 10:00', ?, 'manual:fact-a'
+                )
+                """,
+                (now, planned_name, planned_name, planned_key, report_date, report_date),
+            )
+            conn.execute(
+                """
+                INSERT INTO survey_responses (
+                    response_id, source_row, start_time, full_name, full_name_normalized, full_name_key,
+                    request_type, payment_type, task_description, justification,
+                    planned_work_date, planned_work_time, target_work_date, source_file
+                ) VALUES (
+                    2003, 2003, ?, ?, ?, ?, 'Подать заявку', 'Отгул', 'fact-b', 'reason-b',
+                    ?, '09:00 - 10:00', ?, 'manual:fact-b'
+                )
+                """,
+                (now, planned_name, planned_name, planned_key, report_date, report_date),
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, actual_work_date, actual_work_time, created_at, updated_at
+                ) VALUES ('req:2002', 2002, ?, 'in_fact', ?, '09:00 - 10:00', ?, ?)
+                """,
+                (planned_key, report_date, now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, actual_work_date, actual_work_time, created_at, updated_at
+                ) VALUES ('req:2003', 2003, ?, 'in_fact', ?, '10:00 - 11:00', ?, ?)
+                """,
+                (planned_key, report_date, now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO survey_responses (
+                    response_id, source_row, start_time, full_name, full_name_normalized, full_name_key,
+                    request_type, actual_work_date, actual_work_time, source_file
+                ) VALUES (
+                    3001, 3001, ?, ?, ?, ?, 'Указать отработанное время', ?, '08:00 - 09:00', 'manual:web-fact-1'
+                )
+                """,
+                (now, planned_name, planned_name, planned_key, report_date),
+            )
+            conn.execute(
+                """
+                INSERT INTO survey_responses (
+                    response_id, source_row, start_time, full_name, full_name_normalized, full_name_key,
+                    request_type, actual_work_date, actual_work_time, source_file
+                ) VALUES (
+                    3002, 3002, ?, ?, ?, ?, 'Указать отработанное время', ?, '10:00 - 11:00', 'manual:web-fact-2'
+                )
+                """,
+                (now, planned_name, planned_name, planned_key, report_date),
+            )
+            conn.commit()
+
+        output_path = Path(self.tmpdir.name) / "weekly_reports.xlsx"
+        env = dict(os.environ)
+        env["PYTHONPATH"] = f"src{os.pathsep}{env.get('PYTHONPATH', '')}" if env.get("PYTHONPATH") else "src"
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "src/build_weekend_reports.py",
+                "--db",
+                str(self.db_path),
+                "--date-from",
+                report_range_start,
+                "--date-to",
+                report_range_end,
+                "--employees-csv",
+                str(Path(self.tmpdir.name) / "missing.csv"),
+                "--output",
+                str(output_path),
+            ],
+            cwd=str(Path(__file__).resolve().parent.parent),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, completed.returncode, msg=(completed.stderr or completed.stdout))
+
+        with zipfile.ZipFile(output_path) as zip_file:
+            sheet_a2_values = {sheet_name: xlsx_sheet_cells(zip_file, sheet_name)["A2"] for sheet_name in ("Отчет 1", "Отчет 2", "Отчет 3", "Отчет 4")}
+            report1_rows = xlsx_sheet_rows(zip_file, "Отчет 1")
+            report3_rows = xlsx_sheet_rows(zip_file, "Отчет 3")
+            report4_rows = xlsx_sheet_rows(zip_file, "Отчет 4")
+
+        subtitle_prefix = "Период: 20.04.2026–26.04.2026; Дата подготовки: "
+        for sheet_name in ("Отчет 1", "Отчет 2", "Отчет 3", "Отчет 4"):
+            self.assertTrue(sheet_a2_values[sheet_name].startswith(subtitle_prefix))
+
+        report1_header_row = report1_rows[4]
+        report1_column_map = {value: column for column, value in report1_header_row.items() if value}
+        grade_row = next(
+            row
+            for row in report1_rows.values()
+            if row.get(report1_column_map["Перечень задач"]) == "grade-row"
+        )
+        self.assertEqual("Двойная оплата (грейд 12+)", grade_row[report1_column_map["Условия выхода"]])
+        self.assertEqual("Из рабочего времени будет вычтен 1 час на обед", grade_row[report1_column_map["Комментарий"]])
+
+        report3_data_rows = [row for row_index, row in report3_rows.items() if row_index >= 5 and row]
+        self.assertEqual(2, len(report3_data_rows))
+        self.assertEqual(["09:00 - 10:00", "10:00 - 11:00"], [row["C"] for row in report3_data_rows])
+
+        report4_header_row = report4_rows[4]
+        report4_column_map = {value: column for column, value in report4_header_row.items() if value}
+        report4_data_rows = [row for row_index, row in report4_rows.items() if row_index >= 5 and row]
+        self.assertEqual(3, len(report4_data_rows))
+        self.assertEqual(
+            "09:00 - 10:00",
+            next(
+                row[report4_column_map["Фактически отработанное время"]]
+                for row in report4_data_rows
+                if row[report4_column_map["Перечень задач"]] == "fact-a"
+            ),
+        )
+        self.assertEqual(
+            "10:00 - 11:00",
+            next(
+                row[report4_column_map["Фактически отработанное время"]]
+                for row in report4_data_rows
+                if row[report4_column_map["Перечень задач"]] == "fact-b"
+            ),
+        )
+
+    def test_weekend_reports_keep_legacy_actuals_when_no_web_state_exists(self) -> None:
+        report_date = "2026-04-24"
+        report_range_start = "2026-04-20"
+        report_range_end = "2026-04-26"
+        legacy_name = "Легасев Лев Иванович"
+        legacy_key = "легасев лев иванович"
+        now = "2026-04-20T10:00:00"
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO survey_responses (
+                    response_id, source_row, start_time, full_name, full_name_normalized, full_name_key,
+                    request_type, actual_work_date, actual_work_time, source_file
+                ) VALUES (
+                    3003, 3003, ?, ?, ?, ?, 'Указать отработанное время', ?, '11:00 - 12:00', 'manual:legacy-only'
+                )
+                """,
+                (now, legacy_name, legacy_name, legacy_key, report_date),
+            )
+            conn.commit()
+
+        report_df = importlib.import_module("src.report_third_closure").build_report_dataframe(
+            str(self.db_path),
+            date_from=web_ui.date(2026, 4, 20),
+            date_to=web_ui.date(2026, 4, 26),
+        )
+
+        self.assertEqual(1, len(report_df))
+        self.assertEqual("Легасев Лев Иванович", report_df.iloc[0]["ФИО"])
+        self.assertEqual("11:00 - 12:00", report_df.iloc[0]["Фактически отработанное время"])
+
+    def test_report_three_keeps_legacy_for_cancelled_web_state_and_dedupes_non_cancelled_web_fact(self) -> None:
+        report_third_closure = importlib.import_module("src.report_third_closure")
+        report_date = "2026-08-04"
+        now = "2026-07-23T10:00:00"
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO survey_responses (
+                    response_id, source_row, start_time, full_name, full_name_normalized, full_name_key,
+                    request_type, actual_work_date, actual_work_time, source_file
+                ) VALUES (
+                    4201, 4201, ?, ?, ?, ?, 'Указать отработанное время', ?, '08:00 - 09:00', 'manual:legacy-cancelled'
+                )
+                """,
+                (now, "Отмененов Олег Иванович", "Отмененов Олег Иванович", "отмененов олег иванович", report_date),
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, actual_work_date, actual_work_time, created_at, updated_at
+                ) VALUES ('req:4201', 4201, 'отмененов олег иванович', 'cancelled', ?, '09:00 - 10:00', ?, ?)
+                """,
+                (report_date, now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO survey_responses (
+                    response_id, source_row, start_time, full_name, full_name_normalized, full_name_key,
+                    request_type, actual_work_date, actual_work_time, source_file
+                ) VALUES (
+                    4202, 4202, ?, ?, ?, ?, 'Указать отработанное время', ?, '12:00 - 13:00', 'manual:legacy-web'
+                )
+                """,
+                (now, "Неотменов Николай Иванович", "Неотменов Николай Иванович", "неотменов николай иванович", report_date),
+            )
+            conn.execute(
+                """
+                INSERT INTO survey_responses (
+                    response_id, source_row, start_time, full_name, full_name_normalized, full_name_key,
+                    request_type, actual_work_date, actual_work_time, source_file
+                ) VALUES (
+                    4203, 4203, ?, ?, ?, ?, 'Подать заявку', ?, '10:00 - 11:00', 'manual:web-fact'
+                )
+                """,
+                (now, "Неотменов Николай Иванович", "Неотменов Николай Иванович", "неотменов николай иванович", report_date),
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, actual_work_date, actual_work_time, created_at, updated_at
+                ) VALUES ('req:4203', 4203, 'неотменов николай иванович', 'in_fact', ?, '10:00 - 11:00', ?, ?)
+                """,
+                (report_date, now, now),
+            )
+            conn.commit()
+
+        report_df = report_third_closure.build_report_dataframe(
+            str(self.db_path),
+            date_from=web_ui.date(2026, 8, 4),
+            date_to=web_ui.date(2026, 8, 4),
+        )
+
+        self.assertEqual(2, len(report_df))
+        self.assertEqual(
+            {
+                ("Отмененов Олег Иванович", "04.08.2026", "08:00 - 09:00"),
+                ("Неотменов Николай Иванович", "04.08.2026", "10:00 - 11:00"),
+            },
+            {
+                (row["ФИО"], row["Дата фактического выхода"], row["Фактически отработанное время"])
+                for _, row in report_df.iterrows()
+            },
+        )
+
+    def test_report_four_maps_single_legacy_fact_to_active_request_and_marks_cancelled_not_required(self) -> None:
+        report_four_reconciliation = importlib.import_module("src.report_four_reconciliation")
+        report_date = "2026-08-12"
+        now = "2026-07-23T10:00:00"
+
+        insert_planned_request(
+            self.db_path,
+            response_id=4301,
+            full_name="Свереванов Степан Иванович",
+            full_name_key="свереванов степан иванович",
+            planned_date=report_date,
+        )
+        insert_planned_request(
+            self.db_path,
+            response_id=4302,
+            full_name="Свереванов Степан Иванович",
+            full_name_key="свереванов степан иванович",
+            planned_date=report_date,
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:4301', 4301, 'свереванов степан иванович', 'active', ?, ?)
+                """,
+                (now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:4302', 4302, 'свереванов степан иванович', 'cancelled', ?, ?)
+                """,
+                (now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO survey_responses (
+                    response_id, source_row, start_time, full_name, full_name_normalized, full_name_key,
+                    request_type, actual_work_date, actual_work_time, source_file
+                ) VALUES (
+                    5301, 5301, ?, ?, ?, ?, 'Указать отработанное время', ?, '08:00 - 09:00', 'manual:report-4-legacy'
+                )
+                """,
+                (now, "Свереванов Степан Иванович", "Свереванов Степан Иванович", "свереванов степан иванович", report_date),
+            )
+            conn.commit()
+
+        report_df = report_four_reconciliation.build_report_dataframe(
+            str(self.db_path),
+            date_from=web_ui.date(2026, 8, 12),
+            date_to=web_ui.date(2026, 8, 12),
+        )
+
+        self.assertEqual(2, len(report_df))
+        active_row = report_df.loc[report_df["Статус заявки"] == "Заявка подана"].iloc[0]
+        cancelled_row = report_df.loc[report_df["Статус заявки"] == "Отменена"].iloc[0]
+        self.assertEqual("Да", active_row["Предоставил фактически отработанное время"])
+        self.assertEqual("12.08.2026", active_row["Дата фактического выхода"])
+        self.assertEqual("08:00 - 09:00", active_row["Фактически отработанное время"])
+        self.assertEqual("Не требуется", cancelled_row["Предоставил фактически отработанное время"])
+        self.assertTrue(cancelled_row["Дата фактического выхода"] != cancelled_row["Дата фактического выхода"])
+        self.assertTrue(cancelled_row["Фактически отработанное время"] != cancelled_row["Фактически отработанное время"])
+
+    def test_employee_cancel_is_blocked_by_effective_override_date_inside_planning_lock(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=4301,
+            full_name="Локов Леонид Иванович",
+            full_name_key="локов леонид иванович",
+            planned_date="2026-08-03",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            now = "2026-07-23T10:00:00"
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, override_planned_work_date, created_at, updated_at
+                ) VALUES ('req:4301', 4301, 'локов леонид иванович', 'active', '2026-08-12', ?, ?)
+                """,
+                (now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO app_period_lock (lock_type, date_from, date_to, created_by, created_at, comment)
+                VALUES ('planning', '2026-08-10', '2026-08-16', 'root', ?, 'override lock')
+                """,
+                (now,),
+            )
+            conn.commit()
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(200, client.post("/employee/login", data={"full_name": "Локов Леонид Иванович"}).status_code)
+            blocked = client.post(
+                "/employee/request/cancel",
+                data={
+                    "employee_key": "локов леонид иванович",
+                    "response_id": "4301",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, blocked.status_code)
+        self.assertIn("отмена доступна только администратору", unquote(blocked.headers["location"]).lower())
+        with sqlite3.connect(self.db_path) as conn:
+            state = conn.execute(
+                "SELECT status, override_planned_work_date FROM app_request_state WHERE response_id = 4301"
+            ).fetchone()
+        self.assertEqual(("active", "2026-08-12"), state)
+
+    def test_admin_requests_overview_uses_planned_date_for_actual_lock_when_actual_date_is_missing(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=4303,
+            full_name="Локов Лев Иванович",
+            full_name_key="локов лев иванович",
+            planned_date="2026-08-13",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            now = "2026-07-23T10:00:00"
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES ('req:4303', 4303, 'локов лев иванович', 'in_progress', ?, ?)
+                """,
+                (now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO app_period_lock (lock_type, date_from, date_to, created_by, created_at, comment)
+                VALUES ('actual', '2026-08-13', '2026-08-19', 'root', ?, 'actual lock')
+                """,
+                (now,),
+            )
+            conn.commit()
+
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            overview = web_ui.get_admin_requests_overview()
+
+        item = next(row for row in overview if row["response_id"] == 4303)
+        self.assertEqual("", item["actual_work_date_ru"])
+        self.assertEqual("13.08.2026 - 19.08.2026", item["actual_lock_label"])
 
     def test_blocked_employee_cannot_login(self) -> None:
         insert_planned_request(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
 
@@ -9,8 +10,19 @@ import pandas as pd
 
 try:
     from src.app_request_state import STATUS_LABELS, ensure_app_tables
+    from src.work_time import LUNCH_WARNING, needs_lunch_warning
 except ModuleNotFoundError:
     from app_request_state import STATUS_LABELS, ensure_app_tables
+    from work_time import LUNCH_WARNING, needs_lunch_warning
+
+
+def lunch_warning_comment(value: object) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    try:
+        return LUNCH_WARNING if needs_lunch_warning(str(value).strip()) else ""
+    except ValueError:
+        return ""
 
 
 def build_report_dataframe(db_path: str, date_from: date | None = None, date_to: date | None = None) -> pd.DataFrame:
@@ -31,65 +43,79 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
             COALESCE(st.override_planned_work_time, r.planned_work_time) AS planned_work_time,
             COALESCE(st.override_payment_type, r.payment_type) AS exit_conditions,
             COALESCE(st.override_task_description, r.task_description) AS task_description,
-            COALESCE(st.status, 'active') AS request_status
+            COALESCE(st.status, 'active') AS request_status,
+            st.actual_work_date AS web_actual_work_date,
+            st.actual_work_time AS web_actual_work_time
         FROM survey_responses r
         LEFT JOIN app_request_state st ON st.response_id = r.response_id
         WHERE r.request_type = 'Подать заявку'
           AND COALESCE(st.override_planned_work_date, r.planned_work_date) IS NOT NULL
           {planned_date_filter.replace("r.planned_work_date", "COALESCE(st.override_planned_work_date, r.planned_work_date)")}
     ),
-    actual_base AS (
+    planned_counts AS (
+        SELECT
+            full_name_key,
+            planned_work_date,
+            SUM(CASE WHEN request_status <> 'cancelled' THEN 1 ELSE 0 END) AS planned_count
+        FROM planned_candidates
+        GROUP BY full_name_key, planned_work_date
+    ),
+    legacy_actual_grouped AS (
         SELECT
             r.full_name_key,
             r.actual_work_date,
-            r.actual_work_time,
-            COALESCE(r.start_time, '') AS sort_key
+            COUNT(*) AS actual_count,
+            MAX(r.actual_work_time) AS actual_work_time
         FROM survey_responses r
         WHERE r.request_type = 'Указать отработанное время'
           AND r.actual_work_date IS NOT NULL
           AND r.actual_work_time IS NOT NULL
-        UNION ALL
-        SELECT
-            r.full_name_key,
-            st.actual_work_date,
-            st.actual_work_time,
-            COALESCE(st.updated_at, st.created_at, '') AS sort_key
-        FROM app_request_state st
-        JOIN survey_responses r ON r.response_id = st.response_id
-        WHERE st.actual_work_date IS NOT NULL
-          AND st.actual_work_time IS NOT NULL
+        GROUP BY r.full_name_key, r.actual_work_date
     ),
-    actual_candidates AS (
+    reconciled AS (
         SELECT
-            ab.*,
-            ROW_NUMBER() OVER (
-                PARTITION BY ab.full_name_key, ab.actual_work_date
-                ORDER BY ab.sort_key DESC
-            ) AS rn
-        FROM actual_base ab
+            p.*,
+            CASE
+                WHEN p.web_actual_work_date IS NOT NULL AND p.web_actual_work_time IS NOT NULL
+                    THEN p.web_actual_work_date
+                WHEN p.request_status <> 'cancelled' AND pc.planned_count = 1 AND la.actual_count = 1
+                    THEN la.actual_work_date
+                ELSE NULL
+            END AS actual_work_date,
+            CASE
+                WHEN p.web_actual_work_date IS NOT NULL AND p.web_actual_work_time IS NOT NULL
+                    THEN p.web_actual_work_time
+                WHEN p.request_status <> 'cancelled' AND pc.planned_count = 1 AND la.actual_count = 1
+                    THEN la.actual_work_time
+                ELSE NULL
+            END AS actual_work_time
+        FROM planned_candidates p
+        JOIN planned_counts pc
+          ON pc.full_name_key = p.full_name_key
+         AND pc.planned_work_date = p.planned_work_date
+        LEFT JOIN legacy_actual_grouped la
+          ON la.full_name_key = p.full_name_key
+         AND la.actual_work_date = p.planned_work_date
     )
     SELECT
-        p.full_name,
-        p.planned_work_date,
-        p.planned_work_time,
-        p.exit_conditions,
-        p.task_description,
-        p.request_status,
+        r.full_name,
+        r.planned_work_date,
+        r.planned_work_time,
+        r.exit_conditions,
+        r.task_description,
+        r.request_status,
         CASE
-            WHEN a.full_name_key IS NULL THEN 'Нет'
-            ELSE 'Да'
+            WHEN r.request_status = 'cancelled' THEN 'Не требуется'
+            WHEN r.actual_work_date IS NOT NULL AND r.actual_work_time IS NOT NULL THEN 'Да'
+            ELSE 'Нет'
         END AS has_actual_time,
-        a.actual_work_date,
-        a.actual_work_time
-    FROM planned_candidates p
-    LEFT JOIN actual_candidates a
-        ON a.full_name_key = p.full_name_key
-       AND a.actual_work_date = p.planned_work_date
-       AND a.rn = 1
-    ORDER BY p.planned_work_date, p.full_name;
+        r.actual_work_date,
+        r.actual_work_time
+    FROM reconciled r
+    ORDER BY r.planned_work_date, r.full_name, r.response_id;
     """
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         ensure_app_tables(conn)
         df = pd.read_sql_query(query, conn, params=params)
 
@@ -105,12 +131,16 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
                 "Предоставил фактически отработанное время",
                 "Дата фактического выхода",
                 "Фактически отработанное время",
+                "Комментарий к плановому времени",
+                "Комментарий к фактическому времени",
             ]
         )
 
     df["planned_work_date"] = pd.to_datetime(df["planned_work_date"], errors="coerce").dt.strftime("%d.%m.%Y")
     df["actual_work_date"] = pd.to_datetime(df["actual_work_date"], errors="coerce").dt.strftime("%d.%m.%Y")
     df["request_status"] = df["request_status"].map(lambda value: STATUS_LABELS.get(value, value))
+    df["planned_comment"] = df["planned_work_time"].map(lunch_warning_comment)
+    df["actual_comment"] = df["actual_work_time"].map(lunch_warning_comment)
 
     report_df = df.rename(
         columns={
@@ -123,6 +153,8 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
             "has_actual_time": "Предоставил фактически отработанное время",
             "actual_work_date": "Дата фактического выхода",
             "actual_work_time": "Фактически отработанное время",
+            "planned_comment": "Комментарий к плановому времени",
+            "actual_comment": "Комментарий к фактическому времени",
         }
     )
 
@@ -137,6 +169,8 @@ def build_report_dataframe(db_path: str, date_from: date | None = None, date_to:
             "Предоставил фактически отработанное время",
             "Дата фактического выхода",
             "Фактически отработанное время",
+            "Комментарий к плановому времени",
+            "Комментарий к фактическому времени",
         ]
     ]
 

@@ -6,7 +6,7 @@
   <title>Кабинет сотрудника</title>
   <style>
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; background: #f8fafc; }
+    body { max-width: 1240px; margin: 24px auto; padding: 0 18px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1f2937; background: #f8fafc; }
     a { color: #1d4ed8; text-decoration: none; }
     .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
     .hamburger-menu { position: relative; }
@@ -54,17 +54,21 @@
     .create-trigger-action { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 16px; border-radius: 12px; background: #111827; color: #fff; font-weight: 700; white-space: nowrap; }
     .create-request[open] .create-trigger { border-bottom: 1px solid #e2e8f0; }
     .create-body { padding: 12px 16px 16px; background: transparent; }
-    .form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; align-items: start; }
+    .form-grid { display: grid; grid-template-columns: minmax(196px, 220px) minmax(280px, 340px) minmax(220px, 260px); gap: 10px 12px; align-items: start; justify-content: start; }
     .field-card { display: grid; gap: 6px; padding: 0; border: 0; background: transparent; }
     .field-card label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 650; margin: 0; color: #334155; }
     .field-card input, .field-card select, .field-card textarea { width: 100%; min-height: 42px; background: #fff; color: #0f172a; }
     .field-card select { display: block; height: 42px; background-color: #fff; }
     .field-card textarea { min-height: 76px; padding-top: 10px; resize: vertical; }
-    .field-card.span-2 { grid-column: 1 / -1; }
+    .field-card.full-width { grid-column: 1 / -1; }
+    .field-card.payment-field { max-width: 260px; }
     .create-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
     .create-actions button { min-height: 42px; padding: 0 16px; font-weight: 700; }
     .create-note { color: #64748b; font-size: 14px; max-width: 58ch; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-top: 10px; }
+    .action-grid { display: grid; grid-template-columns: minmax(260px, .72fr) minmax(480px, 1.28fr); gap: 12px; margin-top: 10px; }
+    .action-card { margin: 0; }
+    .actual-grid { display: grid; grid-template-columns: minmax(160px, 196px) minmax(280px, 340px); gap: 10px 12px; align-items: end; justify-content: start; }
+    .correction-grid { display: grid; grid-template-columns: minmax(196px, 220px) minmax(280px, 340px) minmax(220px, 260px); gap: 10px 12px; align-items: start; justify-content: start; }
     .request-item { padding: 0; overflow: visible; }
     .request-item summary { list-style: none; cursor: pointer; padding: 16px; }
     .request-item summary::-webkit-details-marker { display: none; }
@@ -78,24 +82,31 @@
     .prewrap { white-space: pre-line; }
     .field-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .tooltip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 999px; border: 1px solid #94a3b8; color: #475569; font-size: 12px; font-weight: 700; cursor: help; background: #fff; }
-    .tooltip .tooltip-text { visibility: hidden; opacity: 0; transition: opacity .15s ease; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); width: max-content; min-width: 220px; max-width: min(320px, calc(100vw - 32px)); padding: 8px 10px; border-radius: 8px; background: #111827; color: #fff; font-size: 12px; line-height: 1.35; text-align: left; z-index: 300; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); overflow-wrap: anywhere; }
+    .tooltip .tooltip-text { visibility: hidden; opacity: 0; transition: opacity .15s ease; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(calc(-50% + var(--tooltip-shift, 0px))); width: max-content; min-width: 220px; max-width: min(320px, calc(100vw - 32px)); padding: 8px 10px; border-radius: 8px; background: #111827; color: #fff; font-size: 12px; line-height: 1.35; text-align: left; z-index: 300; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); overflow-wrap: anywhere; pointer-events: none; }
     .tooltip:hover .tooltip-text, .tooltip:focus .tooltip-text { visibility: visible; opacity: 1; }
 
     {% include "includes/date_time_controls.css" %}
-    .systems-editor { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 0; min-height: 42px; width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #0f172a; }
+    .systems-editor { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-height: 42px; width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #0f172a; }
     .systems-token-list { display: contents; }
-    .system-token { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; max-width: 100%; padding: 3px 0; color: #0f172a; overflow-wrap: anywhere; }
-    .system-token + .system-token { margin-left: 10px; padding-left: 10px; border-left: 1px solid #94a3b8; }
+    .system-token { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; max-width: 100%; padding: 3px 5px 3px 9px; border: 1px solid #bfdbfe; border-radius: 999px; background: #eff6ff; color: #1e3a8a; overflow-wrap: anywhere; }
     .system-token-remove { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 999px; background: #e2e8f0 !important; color: #334155 !important; font-size: 14px; line-height: 1; }
-    .systems-token-input { flex: 1 1 220px; min-width: 180px; min-height: 28px !important; padding: 3px 0 !important; border: 0 !important; border-radius: 0 !important; outline: none; background: transparent !important; }
+    .systems-token-input { flex: 1 1 180px; min-width: 150px; min-height: 28px !important; padding: 3px 2px !important; border: 0 !important; border-radius: 0 !important; outline: none; background: transparent !important; }
     .field-hint { color: #64748b; font-size: 13px; line-height: 1.35; }
-    @media (max-width: 720px) {
-      body { margin: 16px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    .read-only-value { min-height: 42px; display: flex; align-items: center; padding: 8px 10px; border-radius: 8px; background: #f8fafc; color: #334155; }
+    .request-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    @media (max-width: 820px) {
+      body { margin: 16px auto; padding: 0 14px; }
       .hero-title { font-size: 24px; }
       .create-trigger { align-items: flex-start; }
       .create-trigger-action { width: 100%; }
-      .form-grid { grid-template-columns: 1fr; }
-      .field-card.span-2 { grid-column: 1; }
+      .form-grid, .correction-grid, .actual-grid, .action-grid { grid-template-columns: minmax(0, 1fr); }
+      .field-card.full-width { grid-column: 1; }
+      .field-card.payment-field { max-width: none; }
+      .compact-date .date-input-wrap { max-width: 100%; }
+      .summary-main, .summary-meta { min-width: 0; }
+      .summary-main span { overflow-wrap: anywhere; }
+      .systems-token-input { min-width: 120px; }
     }
   </style>
 </head>
@@ -127,15 +138,15 @@
   {% endif %}
 
   {% if msg %}
-    <div class="msg {{ level }}">{{ msg }}</div>
+    <div class="msg {{ level }}" role="status" aria-live="polite">{{ msg }}</div>
   {% endif %}
 
   {% if admin_mode %}
     <div class="card">
       <form action="/employee" method="get" class="row">
         <input type="hidden" name="admin_mode" value="1" />
-        <label><strong>Сотрудник:</strong></label>
-        <select name="employee_key" required>
+        <label for="admin-employee-key"><strong>Сотрудник:</strong></label>
+        <select id="admin-employee-key" name="employee_key" required>
           <option value="">Выберите сотрудника</option>
           {% for employee in employees %}
             <option value="{{ employee.employee_key }}" {% if selected and selected.employee_key == employee.employee_key %}selected{% endif %}>
@@ -152,11 +163,12 @@
       <p class="meta">Укажите ФИО полностью. Если пользователь еще не зарегистрирован, система создаст кабинет и покажет токен один раз. Если токен уже существует, система попросит его ввести.</p>
       <form action="/employee/login" method="post">
         <div class="row">
-          <label><strong>ФИО</strong></label>
+          <label for="employee-full-name"><strong>ФИО</strong></label>
           <span class="tooltip" tabindex="0">?
             <span class="tooltip-text">Укажите полное ФИО без сокращений. По этому полю система найдет существующий кабинет или зарегистрирует новый.</span>
           </span>
           <input
+            id="employee-full-name"
             type="text"
             name="full_name"
             placeholder="Фамилия Имя Отчество"
@@ -168,18 +180,18 @@
         {% if pending_employee_key %}
           <input type="hidden" name="employee_key" value="{{ pending_employee_key }}" />
           <div class="row" style="margin-top:10px;">
-            <label><strong>Токен</strong></label>
+            <label for="employee-access-token"><strong>Токен</strong></label>
             <span class="tooltip" tabindex="0">?
               <span class="tooltip-text">Введите ранее выданный токен. Если токен потерян, используйте кнопку Забыл токен.</span>
             </span>
-            <input type="text" name="access_token" placeholder="Токен доступа" style="min-width: 320px;" required />
+            <input id="employee-access-token" type="text" name="access_token" placeholder="Токен доступа" style="min-width: 320px;" required />
             <button type="submit">Войти</button>
           </div>
         {% else %}
           <div class="row" style="margin-top:10px;">
             <input type="hidden" name="grade_12_plus" value="0" />
-            <label class="check-row">
-              <input type="checkbox" name="grade_12_plus" value="1" />
+            <label class="check-row" for="employee-grade-12-plus">
+              <input id="employee-grade-12-plus" type="checkbox" name="grade_12_plus" value="1" />
               <strong>Мой грейд 12 или выше</strong>
             </label>
             <span class="tooltip" tabindex="0">?
@@ -238,7 +250,7 @@
     </div>
 
     <details class="card create-request" {% if create_open %}open{% endif %} data-create-request>
-      <summary>
+      <summary aria-controls="create-request-form-panel">
         <div class="create-trigger">
           <div class="create-trigger-main">
             <div class="create-trigger-title">Создать новую заявку</div>
@@ -246,38 +258,49 @@
               Откройте форму только в момент, когда нужно добавить новый выход. Это поддерживает чистый экран и не смешивает создание новой заявки с уже существующими.
             </div>
           </div>
-          <span class="create-trigger-action">Открыть форму</span>
+          <span class="create-trigger-action" data-create-trigger-label>Открыть форму</span>
         </div>
       </summary>
-      <div class="create-body">
+      <div class="create-body" id="create-request-form-panel">
       <form action="/employee/request/create" method="post" data-create-request-form>
         <input type="hidden" name="employee_key" value="{{ selected.employee_key }}" />
         <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
         <div class="form-grid">
-          <div class="field-card">
-            <label>Плановая дата
+          <div class="field-card compact-date">
+            <label for="create-planned-date">Плановая дата
               <span class="tooltip" tabindex="0">?
                 <span class="tooltip-text">Дата выхода в выходной день. Можно создавать несколько заявок на одну дату.</span>
               </span>
             </label>
             <input type="hidden" name="planned_work_date" value="{{ today }}" />
-            <input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+            <input id="create-planned-date" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
           </div>
           <div class="field-card">
-            <label>Плановое время
+            <label for="create-time-start">Плановое время
               <span class="tooltip" tabindex="0">?
                 <span class="tooltip-text">Формат времени: HH:MM - HH:MM. Можно указать отдельный временной слот в тот же день.</span>
               </span>
             </label>
-            <input type="text" name="planned_work_time" data-time-mask="true" placeholder="09:00 - 18:00" required />
+            <div class="time-range-control" data-time-range data-allow-overnight="true">
+              <input id="create-time-start" type="text" data-time-start data-time-part data-time-mask="true" placeholder="09:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Плановое время начала" required />
+              <span class="time-range-separator" aria-hidden="true">—</span>
+              <label class="sr-only" for="create-time-end">Плановое время окончания</label>
+              <input id="create-time-end" type="text" data-time-end data-time-part data-time-mask="true" placeholder="18:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Плановое время окончания" required />
+              <input type="hidden" name="planned_work_time" data-time-range-value value="" />
+              <div class="time-feedback" aria-live="polite">
+                <div class="time-duration" data-duration></div>
+                <div class="time-lunch-warning" data-lunch-warning></div>
+                <div class="overnight-preview" data-overnight-preview hidden></div>
+              </div>
+            </div>
           </div>
-          <div class="field-card">
-            <label>Условия выхода
+          <div class="field-card payment-field">
+            <label for="create-payment-type">Условия выхода
               <span class="tooltip" tabindex="0">?
                 <span class="tooltip-text">Укажите тип компенсации за выход в выходной день.</span>
               </span>
             </label>
-            <select name="payment_type">
+            <select id="create-payment-type" name="payment_type" required>
               <option value="Отгул">Отгул</option>
               {% if not profile or not profile.grade_12_plus %}
                 <option value="Двойная оплата" selected>Двойная оплата</option>
@@ -287,24 +310,24 @@
               <div class="meta">Для грейда 12+ доступен только отгул.</div>
             {% endif %}
           </div>
-          <div class="field-card span-2">
-            <label>Задача
+          <div class="field-card full-width">
+            <label for="create-task-description">Задача
               <span class="tooltip" tabindex="0">?
                 <span class="tooltip-text">Название релиза, задачи или вида работ.</span>
               </span>
             </label>
-            <textarea name="task_description" placeholder="Например: релиз ФП05, сопровождение ночного окна"></textarea>
+            <textarea id="create-task-description" name="task_description" placeholder="Например: релиз ФП05, сопровождение ночного окна" required></textarea>
           </div>
-          <div class="field-card span-2">
-            <label>Обоснование
+          <div class="field-card full-width">
+            <label for="create-justification">Обоснование
               <span class="tooltip" tabindex="0">?
                 <span class="tooltip-text">Почему работы нужно выполнять именно в выходной день.</span>
               </span>
             </label>
-            <textarea name="justification" placeholder="Например: недоступность окна в рабочее время"></textarea>
+            <textarea id="create-justification" name="justification" placeholder="Например: недоступность окна в рабочее время" required></textarea>
           </div>
-          <div class="field-card span-2">
-            <label>АС
+          <div class="field-card full-width">
+            <label for="create-systems-input">АС
               <span class="tooltip" tabindex="0">?
                 <span class="tooltip-text">Введите одну АС и нажмите Enter или Tab. Несколько АС будут разделены вертикальной линией.</span>
               </span>
@@ -312,9 +335,9 @@
             <input type="hidden" name="systems" data-systems-hidden value="" />
             <div class="systems-editor" data-systems-editor>
               <div class="systems-token-list" data-systems-token-list></div>
-              <input type="text" class="systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" />
+              <input id="create-systems-input" type="text" class="systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" aria-describedby="create-systems-hint" />
             </div>
-            <div class="field-hint">После ввода одной АС нажмите Enter или Tab. Также можно вставить список через |, запятую или точку с запятой.</div>
+            <div class="field-hint" id="create-systems-hint">После ввода одной АС нажмите Enter или Tab. Также можно вставить список через |, запятую или точку с запятой.</div>
           </div>
         </div>
         <div class="create-actions">
@@ -362,125 +385,128 @@
         <div class="meta"><strong>Обоснование:</strong> {{ req.justification or '—' }}</div>
         <div class="meta prewrap"><strong>АС:</strong>
 {{ req.systems_multiline or '—' }}</div>
+        {% if req.planned_lunch_warning %}
+          <div class="time-lunch-warning" role="note">{{ req.planned_lunch_warning }}</div>
+        {% endif %}
 
-        <div class="grid">
-          <div class="card" style="margin:0;">
+        <div class="action-grid">
+          <div class="card action-card">
             <h4 style="margin-top:0;">Фактически отработанное время</h4>
-            <form action="/employee/request/actual" method="post">
-              <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
-              <input type="hidden" name="response_id" value="{{ req.response_id }}" />
-              <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
-              <div class="row">
-                <div class="field-group">
-                  <label>Дата:</label>
-                  <span class="tooltip" tabindex="0">?
-                    <span class="tooltip-text">Укажите фактическую дату выхода на работу по этой заявке.</span>
-                  </span>
-                </div>
+            {% if req.status != 'cancelled' and req.can_edit_actual %}
+              <form action="/employee/request/actual" method="post">
+                <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
+                <input type="hidden" name="response_id" value="{{ req.response_id }}" />
+                <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
                 <input type="hidden" name="actual_work_date" value="{{ req.actual_work_date_iso or req.planned_work_date_iso }}" />
-                <span class="meta">{{ req.actual_work_date_ru or req.planned_work_date_ru or '—' }}</span>
-              </div>
-              <div class="row" style="margin-top:8px;">
-                <div class="field-group">
-                  <label>Время:</label>
-                  <span class="tooltip" tabindex="0">?
-                    <span class="tooltip-text">Формат времени: HH:MM - HH:MM. Пример: 09:00 - 18:00.</span>
-                  </span>
+                <div class="actual-grid">
+                  <div class="field-card">
+                    <div class="field-hint"><strong>Дата</strong></div>
+                    <div class="read-only-value">{{ req.actual_work_date_ru or req.planned_work_date_ru or '—' }}</div>
+                  </div>
+                  <div class="field-card">
+                    <label for="actual-time-start-{{ req.response_id }}">Время
+                      <span class="tooltip" tabindex="0">?
+                        <span class="tooltip-text">Укажите фактические часы начала и окончания работы.</span>
+                      </span>
+                    </label>
+                    <div class="time-range-control" data-time-range>
+                      <input id="actual-time-start-{{ req.response_id }}" type="text" data-time-start data-time-part data-time-mask="true" placeholder="09:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Фактическое время начала" required />
+                      <span class="time-range-separator" aria-hidden="true">—</span>
+                      <label class="sr-only" for="actual-time-end-{{ req.response_id }}">Фактическое время окончания</label>
+                      <input id="actual-time-end-{{ req.response_id }}" type="text" data-time-end data-time-part data-time-mask="true" placeholder="18:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Фактическое время окончания" required />
+                      <input type="hidden" name="actual_work_time" data-time-range-value value="{{ req.actual_work_time or req.planned_work_time or '' }}" />
+                      <div class="time-feedback" aria-live="polite">
+                        <div class="time-duration" data-duration></div>
+                        <div class="time-lunch-warning" data-lunch-warning></div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <input type="text" name="actual_work_time" data-time-mask="true" value="{{ req.actual_work_time or req.planned_work_time or '' }}" placeholder="09:00 - 18:00" required />
-              </div>
-              {% if req.status != 'cancelled' %}
-                <div style="margin-top:10px;">
-                  <button type="submit" {% if req.status == 'completed' or not req.can_edit_actual %}disabled{% endif %}>Сохранить фактическое время</button>
-                </div>
-              {% endif %}
-            </form>
-          </div>
-
-          <div class="card" style="margin:0;">
-            <h4 style="margin-top:0;">Корректировка заявки</h4>
-            {% if req.can_edit_planning %}
-            <form action="/employee/request/correct" method="post">
-              <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
-              <input type="hidden" name="response_id" value="{{ req.response_id }}" />
-              <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
-
-              <div class="row">
-                <div class="field-group">
-                  <label>Плановая дата:</label>
-                  <span class="tooltip" tabindex="0">?
-                    <span class="tooltip-text">Дата, на которую переносится или уточняется выход по заявке.</span>
-                  </span>
-                </div>
-                <input type="hidden" name="planned_work_date" value="{{ req.planned_work_date_iso }}" />
-                <input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
-              </div>
-              <div class="row" style="margin-top:8px;">
-                <div class="field-group">
-                  <label>Плановое время:</label>
-                  <span class="tooltip" tabindex="0">?
-                    <span class="tooltip-text">Формат времени: HH:MM - HH:MM. Пример: 09:00 - 18:00.</span>
-                  </span>
-                </div>
-                <input type="text" name="planned_work_time" data-time-mask="true" value="{{ req.planned_work_time }}" placeholder="09:00 - 18:00" required />
-              </div>
-              <div class="row" style="margin-top:8px;">
-                <label>Условия выхода:</label>
-                <span class="tooltip" tabindex="0">?
-                  <span class="tooltip-text">Выберите компенсацию за выход: отгул или двойная оплата.</span>
-                </span>
-                <select name="payment_type">
-                  <option value="Отгул" {% if req.payment_type == 'Отгул' %}selected{% endif %}>Отгул</option>
-                  {% if not profile or not profile.grade_12_plus %}
-                    <option value="Двойная оплата" {% if req.payment_type == 'Двойная оплата' %}selected{% endif %}>Двойная оплата</option>
-                  {% endif %}
-                </select>
-                {% if profile and profile.grade_12_plus %}
-                  <span class="meta">Для грейда 12+ доступен только отгул.</span>
-                {% endif %}
-              </div>
-              <div style="margin-top:8px;">
-                <label>Задача:</label>
-                <span class="tooltip" tabindex="0">?
-                  <span class="tooltip-text">Кратко опишите релиз, задачу или вид работ, ради которых оформлен выход.</span>
-                </span>
-                <textarea name="task_description">{{ req.task_description }}</textarea>
-              </div>
-              <div style="margin-top:8px;">
-                <label>Обоснование:</label>
-                <span class="tooltip" tabindex="0">?
-                  <span class="tooltip-text">Укажите причину, по которой работы нужно выполнять именно в выходной день.</span>
-                </span>
-                <textarea name="justification">{{ req.justification }}</textarea>
-              </div>
-              <div style="margin-top:8px;">
-                <label>АС (по одной в строке или через |):</label>
-                <span class="tooltip" tabindex="0">?
-                  <span class="tooltip-text">Введите одну АС и нажмите Enter или Tab. Несколько АС будут разделены вертикальной линией.</span>
-                </span>
-                <input type="hidden" name="systems" data-systems-hidden value="{{ req.systems_multiline }}" />
-                <div class="systems-editor" data-systems-editor>
-                  <div class="systems-token-list" data-systems-token-list></div>
-                  <input type="text" class="systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" />
-                </div>
-                <div class="field-hint">После ввода одной АС нажмите Enter или Tab. Также можно вставить список через |, запятую или точку с запятой.</div>
-              </div>
-              <div style="margin-top:10px;">
-                <button type="submit">Сохранить корректировку</button>
-              </div>
-            </form>
+                <div class="request-actions"><button type="submit">Сохранить фактическое время</button></div>
+              </form>
             {% else %}
-              <p class="meta" style="margin:0;">Прием заявок за этот период закрыт. Корректировка доступна только администратору.</p>
+              <div class="meta"><strong>Дата:</strong> {{ req.actual_work_date_ru or req.planned_work_date_ru or '—' }}</div>
+              <div class="meta"><strong>Время:</strong> {{ req.actual_work_time or '—' }}</div>
+              {% if req.actual_lunch_warning %}<div class="time-lunch-warning" role="note">{{ req.actual_lunch_warning }}</div>{% endif %}
+              {% if req.status != 'cancelled' %}<p class="meta">Ввод фактического времени сейчас недоступен.</p>{% endif %}
             {% endif %}
           </div>
+
+          {% if req.status != 'cancelled' and req.can_edit_planning %}
+            <div class="card action-card">
+              <h4 style="margin-top:0;">Корректировка заявки</h4>
+              <form action="/employee/request/correct" method="post">
+                <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
+                <input type="hidden" name="response_id" value="{{ req.response_id }}" />
+                <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
+                <div class="correction-grid">
+                  <div class="field-card compact-date">
+                    <label for="correct-date-{{ req.response_id }}">Плановая дата
+                      <span class="tooltip" tabindex="0">?<span class="tooltip-text">Дата, на которую переносится или уточняется выход по заявке.</span></span>
+                    </label>
+                    <input type="hidden" name="planned_work_date" value="{{ req.planned_work_date_iso }}" />
+                    <input id="correct-date-{{ req.response_id }}" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+                  </div>
+                  <div class="field-card">
+                    <label for="correct-time-start-{{ req.response_id }}">Плановое время
+                      <span class="tooltip" tabindex="0">?<span class="tooltip-text">Укажите часы начала и окончания работы.</span></span>
+                    </label>
+                    <div class="time-range-control" data-time-range>
+                      <input id="correct-time-start-{{ req.response_id }}" type="text" data-time-start data-time-part data-time-mask="true" placeholder="09:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Плановое время начала" required />
+                      <span class="time-range-separator" aria-hidden="true">—</span>
+                      <label class="sr-only" for="correct-time-end-{{ req.response_id }}">Плановое время окончания</label>
+                      <input id="correct-time-end-{{ req.response_id }}" type="text" data-time-end data-time-part data-time-mask="true" placeholder="18:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Плановое время окончания" required />
+                      <input type="hidden" name="planned_work_time" data-time-range-value value="{{ req.planned_work_time }}" />
+                      <div class="time-feedback" aria-live="polite">
+                        <div class="time-duration" data-duration></div>
+                        <div class="time-lunch-warning" data-lunch-warning></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="field-card payment-field">
+                    <label for="correct-payment-{{ req.response_id }}">Условия выхода
+                      <span class="tooltip" tabindex="0">?<span class="tooltip-text">Выберите компенсацию за выход: отгул или двойная оплата.</span></span>
+                    </label>
+                    <select id="correct-payment-{{ req.response_id }}" name="payment_type" required>
+                      <option value="Отгул" {% if req.payment_type == 'Отгул' %}selected{% endif %}>Отгул</option>
+                      {% if not profile or not profile.grade_12_plus %}<option value="Двойная оплата" {% if req.payment_type == 'Двойная оплата' %}selected{% endif %}>Двойная оплата</option>{% endif %}
+                    </select>
+                    {% if profile and profile.grade_12_plus %}<span class="meta">Для грейда 12+ доступен только отгул.</span>{% endif %}
+                  </div>
+                  <div class="field-card full-width">
+                    <label for="correct-task-{{ req.response_id }}">Задача</label>
+                    <textarea id="correct-task-{{ req.response_id }}" name="task_description" required>{{ req.task_description }}</textarea>
+                  </div>
+                  <div class="field-card full-width">
+                    <label for="correct-justification-{{ req.response_id }}">Обоснование</label>
+                    <textarea id="correct-justification-{{ req.response_id }}" name="justification" required>{{ req.justification }}</textarea>
+                  </div>
+                  <div class="field-card full-width">
+                    <label for="correct-systems-{{ req.response_id }}">АС</label>
+                    <input type="hidden" name="systems" data-systems-hidden value="{{ req.systems_multiline }}" />
+                    <div class="systems-editor" data-systems-editor>
+                      <div class="systems-token-list" data-systems-token-list></div>
+                      <input id="correct-systems-{{ req.response_id }}" type="text" class="systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" />
+                    </div>
+                    <div class="field-hint">После ввода одной АС нажмите Enter или Tab. Также можно вставить список через |, запятую или точку с запятой.</div>
+                  </div>
+                </div>
+                <div class="request-actions"><button type="submit">Сохранить корректировку</button></div>
+              </form>
+            </div>
+          {% endif %}
         </div>
 
-        {% if req.status != 'cancelled' %}
-          <form action="/employee/request/cancel" method="post" style="margin-top: 10px;">
+        {% if req.status != 'cancelled' and not req.can_edit_planning %}
+          <p class="meta">Прием заявок за этот период закрыт. Корректировка сейчас недоступна.</p>
+        {% endif %}
+
+        {% if req.status != 'cancelled' and req.can_edit_planning %}
+          <form action="/employee/request/cancel" method="post" class="request-actions">
             <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
             <input type="hidden" name="response_id" value="{{ req.response_id }}" />
             <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
-            <button type="submit" class="cancel" {% if not req.can_edit_planning %}disabled{% endif %}>Перевести в статус "Отменена"</button>
+            <button type="submit" class="cancel">Перевести в статус "Отменена"</button>
           </form>
         {% endif %}
 
@@ -516,7 +542,10 @@
       let systems = splitSystemsInput(hidden.value);
 
       const syncHidden = () => {
-        hidden.value = systems.join(" | ");
+        const nextValue = systems.join(" | ");
+        if (hidden.value === nextValue) return;
+        hidden.value = nextValue;
+        hidden.dispatchEvent(new Event("change", { bubbles: true }));
       };
 
       const render = () => {
@@ -597,11 +626,39 @@
 
     document.querySelectorAll('[data-systems-editor]').forEach(attachSystemsEditor);
 
+    function alignTooltip(tooltip) {
+      const text = tooltip.querySelector(".tooltip-text");
+      if (!text) return;
+      text.style.setProperty("--tooltip-shift", "0px");
+      window.requestAnimationFrame(() => {
+        const rect = text.getBoundingClientRect();
+        let shift = 0;
+        if (rect.left < 12) shift += 12 - rect.left;
+        if (rect.right > window.innerWidth - 12) shift -= rect.right - (window.innerWidth - 12);
+        text.style.setProperty("--tooltip-shift", `${shift}px`);
+      });
+    }
+
+    document.querySelectorAll(".tooltip").forEach((tooltip) => {
+      tooltip.addEventListener("mouseenter", () => alignTooltip(tooltip));
+      tooltip.addEventListener("focus", () => alignTooltip(tooltip));
+    });
 
     const pageLevel = "{{ level }}";
     const createForm = document.querySelector('[data-create-request-form]');
     const createDetails = document.querySelector('[data-create-request]');
+    const createSummary = createDetails?.querySelector("summary");
+    const createTriggerLabel = createDetails?.querySelector("[data-create-trigger-label]");
     const createDraftKey = createForm ? `work-on-holiday:create-draft:${createForm.elements.employee_key?.value || "unknown"}` : "";
+
+    function updateCreateToggleLabel() {
+      if (!createDetails || !createTriggerLabel) return;
+      createTriggerLabel.textContent = createDetails.open ? "Закрыть форму" : "Открыть форму";
+      createSummary?.setAttribute("aria-expanded", String(createDetails.open));
+    }
+
+    createDetails?.addEventListener("toggle", updateCreateToggleLabel);
+    updateCreateToggleLabel();
 
     function getStoredDraft() {
       if (!createDraftKey) return null;
@@ -661,13 +718,16 @@
           const visibleDate = field.parentElement?.querySelector('input[data-date-picker="true"]');
           if (visibleDate?.setIsoDate) visibleDate.setIsoDate(value);
         }
+        if (field.type === "hidden" && key === "planned_work_time" && field.syncTimeRange) {
+          field.syncTimeRange();
+        }
         if (key === "systems") {
           const editor = createForm.querySelector('[data-systems-editor]');
           if (editor?.syncFromHidden) editor.syncFromHidden();
         }
       });
       createDetails?.setAttribute("open", "");
-      createForm.querySelectorAll('input[data-time-mask="true"]').forEach((input) => updateDurationHint(input));
+      updateCreateToggleLabel();
     }
 
     if (createForm) {

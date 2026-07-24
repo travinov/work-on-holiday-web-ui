@@ -1,11 +1,7 @@
-    function clampTimePart(part, max) {
-      if (!part) return "";
-      const num = Math.min(parseInt(part, 10), max);
-      return String(Number.isNaN(num) ? 0 : num).padStart(2, "0");
-    }
-
     function maskTimeRange(value) {
-      const digits = (value || "").replace(/\D/g, "").slice(0, 8);
+      const rawValue = value || "";
+      const digits = rawValue.replace(/\D/g, "");
+      if (digits.length > 8) return rawValue;
       if (!digits) return "";
 
       const firstHourRaw = digits.slice(0, 2);
@@ -13,33 +9,71 @@
       const secondHourRaw = digits.slice(4, 6);
       const secondMinuteRaw = digits.slice(6, 8);
 
-      let result = firstHourRaw.length === 2 ? clampTimePart(firstHourRaw, 23) : firstHourRaw;
+      let result = firstHourRaw;
 
       if (firstMinuteRaw.length > 0) {
-        const firstMinute = firstMinuteRaw.length === 2 ? clampTimePart(firstMinuteRaw, 59) : firstMinuteRaw;
-        result += `:${firstMinute}`;
+        result += `:${firstMinuteRaw}`;
       }
 
       if (secondHourRaw.length > 0) {
-        const secondHour = secondHourRaw.length === 2 ? clampTimePart(secondHourRaw, 23) : secondHourRaw;
-        result += ` - ${secondHour}`;
+        result += ` - ${secondHourRaw}`;
       }
 
       if (secondMinuteRaw.length > 0) {
-        const secondMinute = secondMinuteRaw.length === 2 ? clampTimePart(secondMinuteRaw, 59) : secondMinuteRaw;
-        result += `:${secondMinute}`;
+        result += `:${secondMinuteRaw}`;
       }
 
       return result;
     }
 
     function minutesFromTimeRange(value) {
-      const match = /^\s*(\d{1,2})[:.](\d{2})\s*-\s*(\d{1,2})[:.](\d{2})\s*$/.exec(value || "");
+      const match = /^(\d{2}):(\d{2}) - (\d{2}):(\d{2})$/.exec(value || "");
       if (!match) return null;
-      const start = Number(match[1]) * 60 + Number(match[2]);
-      let end = Number(match[3]) * 60 + Number(match[4]);
+      const startHour = Number(match[1]);
+      const startMinute = Number(match[2]);
+      const endHour = Number(match[3]);
+      const endMinute = Number(match[4]);
+      if (startHour > 23 || endHour > 23 || startMinute > 59 || endMinute > 59) return null;
+      const start = startHour * 60 + startMinute;
+      let end = endHour * 60 + endMinute;
+      if (end === start) return null;
       if (end < start) end += 24 * 60;
-      return Math.max(0, end - start);
+      return end - start;
+    }
+
+    let validationMessageCounter = 0;
+
+    function addDescribedBy(input, errorId) {
+      const ids = new Set((input.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean));
+      ids.add(errorId);
+      input.setAttribute("aria-describedby", Array.from(ids).join(" "));
+    }
+
+    function createValidationMessage(inputs, parent, before = null) {
+      const error = document.createElement("div");
+      validationMessageCounter += 1;
+      error.id = `field-validation-error-${validationMessageCounter}`;
+      error.className = "field-validation-error";
+      error.setAttribute("aria-live", "polite");
+      error.hidden = true;
+      parent.insertBefore(error, before);
+      inputs.forEach((input) => addDescribedBy(input, error.id));
+      return error;
+    }
+
+    function setInputValidity(input, message, showError) {
+      input.setCustomValidity(message || "");
+      if (message && showError) {
+        input.setAttribute("aria-invalid", "true");
+      } else {
+        input.removeAttribute("aria-invalid");
+      }
+    }
+
+    function renderValidationMessage(error, message, showError) {
+      const visibleMessage = showError ? message : "";
+      error.textContent = visibleMessage;
+      error.hidden = !visibleMessage;
     }
 
     function durationLabel(totalMinutes) {
@@ -49,23 +83,220 @@
       return `Итого: ${hours} ч ${String(minutes).padStart(2, "0")} мин`;
     }
 
-    function normalizeTimeInput(input, force = false) {
+    function normalizeTimeInput(input) {
       const previous = input.value;
       const atEnd = input.selectionStart === previous.length && input.selectionEnd === previous.length;
-      const digitsOnly = /^\d+$/.test(previous.replace(/\s/g, ""));
-      if (!force && !atEnd && !digitsOnly) return;
+      if (!atEnd || !/^[\d:\s-]*$/.test(previous)) return;
       input.value = maskTimeRange(previous);
     }
 
-    function updateDurationHint(input) {
+    function ensureDurationHint(input) {
       let hint = input.nextElementSibling;
       if (!hint || !hint.classList.contains("duration-hint")) {
         hint = document.createElement("div");
         hint.className = "duration-hint";
         input.insertAdjacentElement("afterend", hint);
       }
-      hint.textContent = durationLabel(minutesFromTimeRange(input.value));
+      return hint;
+    }
+
+    function updateDurationHint(input, totalMinutes) {
+      const hint = ensureDurationHint(input);
+      hint.textContent = durationLabel(totalMinutes);
       hint.hidden = !hint.textContent;
+    }
+
+    function validateTimeRangeValue(value) {
+      const match = /^(\d{2}):(\d{2}) - (\d{2}):(\d{2})$/.exec(value || "");
+      if (!match) {
+        return {
+          complete: ((value || "").match(/\d/g) || []).length >= 8,
+          message: "Введите время в формате ЧЧ:ММ - ЧЧ:ММ.",
+          minutes: null,
+          isOvernight: false,
+        };
+      }
+
+      const minutes = minutesFromTimeRange(value);
+      if (minutes === null) {
+        const startMinutes = Number(match[1]) * 60 + Number(match[2]);
+        const endMinutes = Number(match[3]) * 60 + Number(match[4]);
+        const partsInRange = Number(match[1]) <= 23
+          && Number(match[2]) <= 59
+          && Number(match[3]) <= 23
+          && Number(match[4]) <= 59;
+        return {
+          complete: true,
+          message: partsInRange && startMinutes === endMinutes
+            ? "Время начала и окончания не должно совпадать."
+            : "Укажите корректное время от 00:00 до 23:59.",
+          minutes: null,
+          isOvernight: false,
+        };
+      }
+
+      const startMinutes = Number(match[1]) * 60 + Number(match[2]);
+      const endMinutes = Number(match[3]) * 60 + Number(match[4]);
+      return {
+        complete: true,
+        message: "",
+        minutes,
+        isOvernight: endMinutes > 0 && endMinutes < startMinutes,
+      };
+    }
+
+    function parseClockValue(value) {
+      const match = /^(\d{2}):(\d{2})$/.exec(value || "");
+      if (!match) return null;
+      const hour = Number(match[1]);
+      const minute = Number(match[2]);
+      if (hour > 23 || minute > 59) return null;
+      return hour * 60 + minute;
+    }
+
+    function splitStoredTimeRange(value) {
+      const match = /^\s*(\d{1,2})[:.](\d{2})\s*-\s*(\d{1,2})[:.](\d{2})\s*$/.exec(value || "");
+      if (!match) return ["", ""];
+      return [
+        `${match[1].padStart(2, "0")}:${match[2]}`,
+        `${match[3].padStart(2, "0")}:${match[4]}`,
+      ];
+    }
+
+    function formatClockInput(value) {
+      const rawValue = value || "";
+      const digits = rawValue.replace(/\D/g, "");
+      if (digits.length > 4) return rawValue;
+      return digits.length > 2 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : digits;
+    }
+
+    function nextIsoDate(isoValue) {
+      const parsed = isoToDate(isoValue);
+      if (!parsed) return "";
+      parsed.setDate(parsed.getDate() + 1);
+      return dateToIso(parsed);
+    }
+
+    function renderOvernightPreview(root, startValue, endValue, isOvernight) {
+      const preview = root.querySelector("[data-overnight-preview]");
+      if (!preview) return;
+      preview.replaceChildren();
+      preview.hidden = !isOvernight;
+      if (!isOvernight) return;
+
+      const plannedDate = root.closest("form")?.elements.planned_work_date?.value || "";
+      const heading = document.createElement("strong");
+      heading.textContent = "Будет создано две заявки";
+      preview.appendChild(heading);
+
+      const first = document.createElement("div");
+      first.textContent = `${isoToRuDate(plannedDate) || "Первая дата"}: ${startValue} - 00:00`;
+      preview.appendChild(first);
+
+      const second = document.createElement("div");
+      second.textContent = `${isoToRuDate(nextIsoDate(plannedDate)) || "Следующая дата"}: 00:00 - ${endValue}`;
+      preview.appendChild(second);
+    }
+
+    function attachTimeRangeControl(root) {
+      const startInput = root.querySelector("[data-time-start]");
+      const endInput = root.querySelector("[data-time-end]");
+      const hiddenInput = root.querySelector("[data-time-range-value]");
+      const duration = root.querySelector("[data-duration]");
+      const lunchWarning = root.querySelector("[data-lunch-warning]");
+      if (!startInput || !endInput || !hiddenInput || !duration || !lunchWarning) return;
+
+      const feedback = root.querySelector(".time-feedback") || root;
+      const error = createValidationMessage([startInput, endInput], feedback, feedback.firstChild);
+      let showAllErrors = false;
+
+      const sync = (forceErrors = false) => {
+        showAllErrors = showAllErrors || forceErrors;
+        const startMinutes = parseClockValue(startInput.value);
+        const endMinutes = parseClockValue(endInput.value);
+        const startComplete = /^\d{2}:\d{2}$/.test(startInput.value);
+        const endComplete = /^\d{2}:\d{2}$/.test(endInput.value);
+        const startMessage = startMinutes === null
+          ? (startInput.value ? "Укажите корректное время от 00:00 до 23:59." : "Укажите время начала.")
+          : "";
+        const endMessage = endMinutes === null
+          ? (endInput.value ? "Укажите корректное время от 00:00 до 23:59." : "Укажите время окончания.")
+          : "";
+        const sameTime = startMinutes !== null && endMinutes !== null && endMinutes === startMinutes;
+        const equalMessage = sameTime ? "Время начала и окончания не должно совпадать." : "";
+        const isOvernight = startMinutes !== null && endMinutes !== null && endMinutes > 0 && endMinutes < startMinutes;
+        const overnightMessage = isOvernight && root.dataset.allowOvernight !== "true"
+          ? "Переход через полночь здесь недоступен. Укажите время в пределах одной даты."
+          : "";
+        const message = equalMessage || overnightMessage || startMessage || endMessage;
+        const showStartError = Boolean(startMessage) && (showAllErrors || startComplete);
+        const showEndError = Boolean(endMessage) && (showAllErrors || endComplete);
+        const showEqualError = Boolean(equalMessage);
+        const showOvernightError = Boolean(overnightMessage);
+
+        setInputValidity(
+          startInput,
+          equalMessage || overnightMessage || startMessage,
+          showEqualError || showOvernightError || showStartError,
+        );
+        setInputValidity(
+          endInput,
+          equalMessage || overnightMessage || endMessage,
+          showEqualError || showOvernightError || showEndError,
+        );
+        renderValidationMessage(
+          error,
+          message,
+          showEqualError || showOvernightError || showStartError || showEndError,
+        );
+
+        if (message) {
+          hiddenInput.value = "";
+          duration.textContent = "";
+          lunchWarning.textContent = "";
+          renderOvernightPreview(root, startInput.value, endInput.value, false);
+          return;
+        }
+
+        const endsAtMidnight = endMinutes === 0 && startMinutes !== 0;
+        const effectiveEndMinutes = endsAtMidnight ? 24 * 60 : endMinutes;
+        const totalMinutes = isOvernight
+          ? 24 * 60 - startMinutes + endMinutes
+          : effectiveEndMinutes - startMinutes;
+
+        hiddenInput.value = `${startInput.value} - ${endInput.value}`;
+        duration.textContent = durationLabel(totalMinutes);
+        const segmentNeedsLunch = isOvernight && root.dataset.allowOvernight === "true"
+          ? (24 * 60 - startMinutes >= 300 || endMinutes >= 300)
+          : totalMinutes >= 300;
+        lunchWarning.textContent = segmentNeedsLunch ? "Из рабочего времени будет вычтен 1 час на обед" : "";
+        renderOvernightPreview(root, startInput.value, endInput.value, root.dataset.allowOvernight === "true" && isOvernight);
+      };
+
+      const syncFromHidden = () => {
+        const [startValue, endValue] = splitStoredTimeRange(hiddenInput.value);
+        startInput.value = startValue;
+        endInput.value = endValue;
+        sync();
+      };
+
+      [startInput, endInput].forEach((input) => {
+        input.addEventListener("input", () => {
+          const atEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+          if (atEnd && /^[\d:]*$/.test(input.value)) input.value = formatClockInput(input.value);
+          sync();
+        });
+        input.addEventListener("blur", () => sync(true));
+        input.addEventListener("change", () => sync(showAllErrors));
+        input.addEventListener("invalid", () => sync(true));
+      });
+      hiddenInput.syncTimeRange = syncFromHidden;
+      const form = root.closest("form");
+      form?.addEventListener("submit", () => sync(true));
+      form?.addEventListener("change", (event) => {
+        if (event.target.matches?.('input[data-date-picker="true"]')) sync();
+      });
+      syncFromHidden();
     }
 
     function isoToRuDate(value) {
@@ -74,16 +305,22 @@
     }
 
     function ruDateToIso(value) {
-      const digits = (value || "").replace(/\D/g, "").slice(0, 8);
-      if (digits.length !== 8) return "";
-      const day = digits.slice(0, 2);
-      const month = digits.slice(2, 4);
-      const year = digits.slice(4, 8);
-      return `${year}-${month}-${day}`;
+      const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value || "");
+      if (!match) return "";
+      const day = Number(match[1]);
+      const month = Number(match[2]);
+      const year = Number(match[3]);
+      if (year < 1000) return "";
+      const parsed = new Date(0);
+      parsed.setHours(0, 0, 0, 0);
+      parsed.setFullYear(year, month - 1, day);
+      if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) return "";
+      return `${match[3]}-${match[2]}-${match[1]}`;
     }
 
     function maskRuDate(value) {
-      const digits = (value || "").replace(/\D/g, "").slice(0, 8);
+      const rawValue = value || "";
+      const digits = rawValue.replace(/\D/g, "").slice(0, 8);
       const parts = [];
       if (digits.length > 0) parts.push(digits.slice(0, 2));
       if (digits.length > 2) parts.push(digits.slice(2, 4));
@@ -98,7 +335,15 @@
     function isoToDate(value) {
       const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
       if (!match) return null;
-      return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      if (year < 1000) return null;
+      const parsed = new Date(0);
+      parsed.setHours(0, 0, 0, 0);
+      parsed.setFullYear(year, month - 1, day);
+      if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) return null;
+      return parsed;
     }
 
     function dateToIso(date) {
@@ -118,6 +363,10 @@
 
     function attachRuDatePicker(input) {
       const hidden = input.previousElementSibling;
+      input.maxLength = 10;
+      input.pattern = "[0-9]{2}/[0-9]{2}/[0-9]{4}";
+      input.inputMode = "numeric";
+      input.autocomplete = "off";
       const wrapper = document.createElement("span");
       wrapper.className = "date-input-wrap";
       input.parentNode.insertBefore(wrapper, input);
@@ -126,7 +375,7 @@
       const pickerButton = document.createElement("button");
       pickerButton.type = "button";
       pickerButton.className = "date-picker-button";
-      pickerButton.textContent = "...";
+      pickerButton.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18"><path d="M7 2v3M17 2v3M3 9h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       pickerButton.setAttribute("aria-label", "Выбрать дату из календаря");
       pickerButton.setAttribute("aria-expanded", "false");
 
@@ -144,21 +393,38 @@
 
       let visibleMonth = isoToDate(hidden && hidden.type === "hidden" ? hidden.value : "") || new Date();
       visibleMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
+      const error = createValidationMessage([input], wrapper.parentNode, wrapper.nextSibling);
+      let showAllErrors = false;
 
       const setIsoValue = (isoValue) => {
+        const parsed = isoToDate(isoValue);
+        const validIsoValue = parsed ? dateToIso(parsed) : "";
         if (hidden && hidden.type === "hidden") {
-          hidden.value = isoValue || "";
+          hidden.value = validIsoValue;
         }
-        input.value = isoToRuDate(isoValue || "");
+        input.value = isoToRuDate(validIsoValue);
+        setInputValidity(input, "", false);
+        renderValidationMessage(error, "", false);
+        if (parsed) visibleMonth = new Date(parsed.getFullYear(), parsed.getMonth(), 1);
       };
       input.setIsoDate = setIsoValue;
 
-      const syncHiddenDate = () => {
-        input.value = maskRuDate(input.value);
+      const syncHiddenDate = (forceErrors = false) => {
+        showAllErrors = showAllErrors || forceErrors;
+        const atEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+        if (atEnd && /^[\d/]*$/.test(input.value)) input.value = maskRuDate(input.value);
         const isoValue = ruDateToIso(input.value);
+        const hasValue = Boolean(input.value);
+        const message = isoValue || (!hasValue && !input.required)
+          ? ""
+          : "Введите реальную дату в формате ДД/ММ/ГГГГ.";
+        const complete = ((input.value || "").match(/\d/g) || []).length >= 8;
+        const showError = Boolean(message) && (showAllErrors || complete);
         if (hidden && hidden.type === "hidden") {
-          hidden.value = isoValue;
+          hidden.value = message ? "" : isoValue;
         }
+        setInputValidity(input, message, showError);
+        renderValidationMessage(error, message, showError);
         const parsed = isoToDate(isoValue);
         if (parsed) visibleMonth = new Date(parsed.getFullYear(), parsed.getMonth(), 1);
       };
@@ -225,6 +491,7 @@
           dayButton.setAttribute("aria-label", isoToRuDate(currentIso));
           dayButton.addEventListener("click", () => {
             setIsoValue(currentIso);
+            input.dispatchEvent(new Event("change", { bubbles: true }));
             closePicker();
             input.focus();
           });
@@ -267,9 +534,11 @@
         setIsoValue(hidden.value);
       }
 
-      input.addEventListener("input", syncHiddenDate);
-      input.addEventListener("change", syncHiddenDate);
-      input.form?.addEventListener("submit", syncHiddenDate);
+      input.addEventListener("input", () => syncHiddenDate());
+      input.addEventListener("blur", () => syncHiddenDate(true));
+      input.addEventListener("change", () => syncHiddenDate(showAllErrors));
+      input.addEventListener("invalid", () => syncHiddenDate(true));
+      input.form?.addEventListener("submit", () => syncHiddenDate(true));
       pickerButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -289,18 +558,39 @@
 
     document.querySelectorAll('input[data-date-picker="true"]').forEach(attachRuDatePicker);
 
-    document.querySelectorAll('input[data-time-mask="true"]').forEach((input) => {
+    document.querySelectorAll("[data-time-range]").forEach(attachTimeRangeControl);
+
+    document.querySelectorAll('input[data-time-mask="true"]:not([data-time-part])').forEach((input) => {
+      const duration = ensureDurationHint(input);
+      const error = createValidationMessage([input], input.parentNode, duration.nextSibling);
+      let showAllErrors = false;
+
+      const validate = (forceErrors = false) => {
+        showAllErrors = showAllErrors || forceErrors;
+        const validation = validateTimeRangeValue(input.value);
+        const hasValue = Boolean(input.value);
+        const overnightMessage = validation.isOvernight
+          && input.dataset.disallowOvernight === "true"
+          ? "Ночной интервал нельзя создать одной тестовой заявкой."
+          : "";
+        const message = overnightMessage
+          || (validation.message && (hasValue || input.required) ? validation.message : "");
+        const showError = Boolean(message) && (showAllErrors || validation.complete);
+        setInputValidity(input, message, showError);
+        renderValidationMessage(error, message, showError);
+        updateDurationHint(input, message ? null : validation.minutes);
+      };
+
       input.addEventListener("input", () => {
         normalizeTimeInput(input);
-        updateDurationHint(input);
+        validate();
       });
       input.addEventListener("blur", () => {
-        normalizeTimeInput(input, true);
-        updateDurationHint(input);
+        validate(true);
       });
+      input.addEventListener("invalid", () => validate(true));
       input.form?.addEventListener("submit", () => {
-        normalizeTimeInput(input, true);
-        updateDurationHint(input);
+        validate(true);
       });
-      updateDurationHint(input);
+      validate();
     });

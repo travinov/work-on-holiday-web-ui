@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import random
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -107,7 +108,7 @@ def generate_users(db_path: str | Path, *, count: int = 10, seed: int = 42, over
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         ensure_core_tables(conn)
         ensure_app_tables(conn)
         if overwrite:

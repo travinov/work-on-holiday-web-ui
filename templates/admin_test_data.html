@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Администратор - Тестовые данные</title>
   <style>
+    * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; background: #f8fafc; }
     h1 { margin: 0; }
     .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
@@ -19,7 +20,7 @@
     .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
     .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
     .msg.info { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
-    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 14px; }
     .field { display: grid; gap: 6px; }
     .field label { font-weight: 700; color: #334155; }
     input[type="text"], textarea, select { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px; font-size: 16px; color: #111827; background: #fff; }
@@ -27,12 +28,18 @@
     button { cursor: pointer; border: 1px solid #374151; background: #111827; color: #fff; border-radius: 10px; padding: 11px 14px; font-weight: 700; }
     button.secondary { background: #fff; color: #111827; }
     .hint { color: #64748b; font-size: 14px; line-height: 1.4; }
-    .employees { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; margin-top: 10px; }
+    .employees { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 8px; margin-top: 10px; }
     .employee-option { display: flex; gap: 10px; align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px; background: #f8fafc; }
     .employee-name { font-weight: 700; color: #111827; }
     .badge { display: inline-block; margin-top: 4px; font-size: 12px; padding: 3px 7px; border-radius: 999px; border: 1px solid #cbd5e1; color: #475569; background: #fff; }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
     a { color: #1d4ed8; text-decoration: none; }
+    @media (max-width: 720px) {
+      body { margin: 16px; }
+      .card { padding: 14px; }
+      .form-grid, .employees { grid-template-columns: minmax(0, 1fr); }
+      .actions > * { width: 100%; }
+    }
 
     {% include "includes/date_time_controls.css" %}
   </style>
@@ -55,7 +62,7 @@
   </div>
 
   {% if msg %}
-    <div class="msg {{ level }}">{{ msg }}</div>
+    <div class="msg {{ level }}" role="status" aria-live="polite">{{ msg }}</div>
   {% endif %}
 
   <div class="card">
@@ -68,38 +75,38 @@
   <form action="/admin/test-data" method="post" class="card">
     <div class="form-grid">
       <div class="field">
-        <label>Дата тестовых заявок</label>
+        <label for="test-work-date-visible">Дата тестовых заявок</label>
         <input type="hidden" name="test_work_date" value="{{ default_work_date }}" />
-        <input type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+        <input id="test-work-date-visible" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" maxlength="10" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" required />
       </div>
 
       <div class="field">
-        <label>Режим генерации</label>
-        <select name="generation_mode" required>
+        <label for="test-generation-mode">Режим генерации</label>
+        <select id="test-generation-mode" name="generation_mode" required>
           <option value="planned">Плановые заявки</option>
           <option value="plan_and_actual" selected>План + факт</option>
         </select>
-        <div class="hint">В режиме «План + факт» заявка сразу получает статус «Завершена».</div>
+        <div class="hint">В режиме «План + факт» заявка сразу получает статус «Факт указан».</div>
       </div>
 
       <div class="field">
-        <label>Плановое время</label>
-        <input type="text" name="planned_work_time" value="{{ default_work_time }}" data-time-mask="true" placeholder="10:00 - 14:00" inputmode="numeric" required />
+        <label for="test-planned-work-time">Плановое время</label>
+        <input id="test-planned-work-time" type="text" name="planned_work_time" value="{{ default_work_time }}" data-time-mask="true" data-disallow-overnight="true" placeholder="10:00 - 14:00" inputmode="numeric" autocomplete="off" maxlength="13" pattern="([01][0-9]|2[0-3]):[0-5][0-9] - ([01][0-9]|2[0-3]):[0-5][0-9]" required />
       </div>
 
       <div class="field">
-        <label>Задача</label>
-        <input type="text" name="task_description" value="{{ default_task }}" required />
+        <label for="test-task-description">Задача</label>
+        <input id="test-task-description" type="text" name="task_description" value="{{ default_task }}" required />
       </div>
 
       <div class="field">
-        <label>Обоснование</label>
-        <input type="text" name="justification" value="{{ default_justification }}" required />
+        <label for="test-justification">Обоснование</label>
+        <input id="test-justification" type="text" name="justification" value="{{ default_justification }}" required />
       </div>
 
       <div class="field">
-        <label>АС</label>
-        <textarea name="systems" required>{{ default_systems }}</textarea>
+        <label for="test-systems">АС</label>
+        <textarea id="test-systems" name="systems" required>{{ default_systems }}</textarea>
         <div class="hint">АС можно разделять символом | или переносом строки.</div>
       </div>
     </div>
@@ -108,8 +115,8 @@
     {% if employees %}
       <div class="employees">
         {% for employee in employees %}
-          <label class="employee-option">
-            <input type="checkbox" name="employee_keys" value="{{ employee.employee_key }}" />
+          <label class="employee-option" for="test-employee-{{ loop.index }}">
+            <input id="test-employee-{{ loop.index }}" type="checkbox" name="employee_keys" value="{{ employee.employee_key }}" />
             <span>
               <span class="employee-name">{{ employee.full_name }}</span><br />
               <span class="badge">{% if employee.grade_12_plus %}Грейд 12+: Отгул{% else %}До 12: Двойная оплата{% endif %}</span>
