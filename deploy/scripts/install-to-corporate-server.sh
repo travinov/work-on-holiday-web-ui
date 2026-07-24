@@ -141,4 +141,4 @@ log "Running first no-sudo user deploy on server"
 "${SSH_BASE[@]}" "$SSH_TARGET" "cd $(shell_quote "$DEPLOY_PATH") && ${REMOTE_ENV[*]} deploy/scripts/deploy-user-server.sh"
 
 log "Initial install complete"
-log "Server-local check: ssh $SSH_TARGET 'curl -I http://127.0.0.1:$REMOTE_PORT/'"
+log "Server-local check: ssh $SSH_TARGET \"curl -sS -o /dev/null -w 'HTTP:%{http_code}\\n' http://127.0.0.1:$REMOTE_PORT/\""

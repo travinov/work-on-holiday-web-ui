@@ -202,6 +202,7 @@ $HOME/.local/state/work-on-holiday/backups/survey_results-pre-update-YYYYMMDD-HH
 - `generated_exports/`;
 - `restore_points/`;
 - `backups/`;
+- `data/`;
 - `venv/`.
 
 На сервере SQLite-файл БД хранится вне папки проекта:
@@ -218,13 +219,16 @@ $HOME/.local/state/work-on-holiday/backups/survey_results-pre-update-YYYYMMDD-HH
 
 ```bash
 ssh CI09479675-lnx-travinov@tsles-assai0001.esrt.sber.ru \
-  'curl -I http://127.0.0.1:8081/ && screen -ls | grep work-on-holiday && crontab -l | grep work-on-holiday'
+  "curl -sS -o /dev/null -w 'HTTP:%{http_code}\n' http://127.0.0.1:8081/ \
+  && screen -ls | grep work-on-holiday \
+  && crontab -l | grep work-on-holiday"
 ```
 
 Проверка внешнего доступа с локального компьютера:
 
 ```bash
-curl -I http://tsles-assai0001.esrt.sber.ru:8081/
+curl -sS -o /dev/null -w 'HTTP:%{http_code}\n' \
+  http://tsles-assai0001.esrt.sber.ru:8081/
 ```
 
 
