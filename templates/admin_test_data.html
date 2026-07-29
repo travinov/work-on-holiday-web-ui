@@ -96,7 +96,8 @@
 
       <div class="field">
         <label for="test-task-description">Задача</label>
-        <input id="test-task-description" type="text" name="task_description" value="{{ default_task }}" required />
+        <input id="test-task-description" type="text" name="task_description" value="{{ default_task }}" maxlength="{{ task_description_max_length }}" required />
+        <div class="hint">Не более {{ task_description_max_length }} символов.</div>
       </div>
 
       <div class="field">

@@ -55,9 +55,11 @@ REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 CYRILLIC_NAME_PART_PATTERN = re.compile(r"^[А-ЯЁа-яё]+(?:-[А-ЯЁа-яё]+)*$")
 ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ALLOWED_PAYMENT_TYPES = ("Отгул", "Двойная оплата")
+TASK_DESCRIPTION_MAX_LENGTH = 500
 
 app = FastAPI(title="Work On Holiday - Web UI")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.globals["task_description_max_length"] = TASK_DESCRIPTION_MAX_LENGTH
 
 ADMIN_STATUS_TRANSITIONS = {
     "active": {"active", "in_progress", "cancelled"},
@@ -938,6 +940,8 @@ def validate_required_request_fields(
         return "Некорректный тип компенсации. Допустимые значения: Отгул, Двойная оплата"
     if not task_description.strip():
         return "Укажите задачу"
+    if len(task_description.strip()) > TASK_DESCRIPTION_MAX_LENGTH:
+        return f"Задача не может быть длиннее {TASK_DESCRIPTION_MAX_LENGTH} символов"
     if not justification.strip():
         return "Укажите обоснование"
     if not systems:
@@ -1151,11 +1155,22 @@ def delete_admin_test_data_for_date(conn: sqlite3.Connection, planned_work_date:
     ).fetchall()
     response_ids = [int(row["response_id"]) for row in rows]
     for response_id in response_ids:
-        conn.execute("DELETE FROM app_request_state WHERE response_id = ?;", (response_id,))
-        conn.execute("DELETE FROM app_report_lock WHERE response_id = ?;", (response_id,))
-        conn.execute("DELETE FROM response_systems WHERE response_id = ?;", (response_id,))
-        conn.execute("DELETE FROM survey_responses WHERE response_id = ?;", (response_id,))
+        delete_request_records(conn, response_id)
     return len(response_ids)
+
+
+def delete_request_records(conn: sqlite3.Connection, response_id: int) -> bool:
+    exists = conn.execute(
+        "SELECT 1 FROM survey_responses WHERE response_id = ? AND request_type = 'Подать заявку';",
+        (response_id,),
+    ).fetchone()
+    if not exists:
+        return False
+    conn.execute("DELETE FROM app_request_state WHERE response_id = ?;", (response_id,))
+    conn.execute("DELETE FROM app_report_lock WHERE response_id = ?;", (response_id,))
+    conn.execute("DELETE FROM response_systems WHERE response_id = ?;", (response_id,))
+    conn.execute("DELETE FROM survey_responses WHERE response_id = ?;", (response_id,))
+    return True
 
 
 def insert_test_data_request(
@@ -1855,6 +1870,12 @@ async def admin_create_test_data(request: Request) -> RedirectResponse:
         return redirect_with_message("/admin/test-data", "Укажите хотя бы одну АС", "error")
     if not task_description:
         return redirect_with_message("/admin/test-data", "Укажите задачу", "error")
+    if len(task_description) > TASK_DESCRIPTION_MAX_LENGTH:
+        return redirect_with_message(
+            "/admin/test-data",
+            f"Задача не может быть длиннее {TASK_DESCRIPTION_MAX_LENGTH} символов",
+            "error",
+        )
     if not justification:
         return redirect_with_message("/admin/test-data", "Укажите обоснование", "error")
 
@@ -2741,6 +2762,42 @@ def admin_update_request_status(
         conn.commit()
 
     return redirect_with_message(requests_path, "Статус заявки обновлен", "success")
+
+
+@app.post("/admin/request/delete")
+def admin_delete_request(
+    request: Request,
+    employee_key: str = Form(...),
+    response_id: int = Form(...),
+    challenge_left: str = Form(""),
+    challenge_right: str = Form(""),
+    challenge_answer: str = Form(""),
+    filter_name: str = Form(""),
+    filter_status: str = Form(""),
+    filter_date: str = Form(""),
+) -> RedirectResponse:
+    if not is_admin_or_superuser_request(request):
+        return redirect_with_message("/", "Удаление заявки доступно только администратору", "error")
+
+    requests_path = build_admin_requests_path(filter_name, filter_status, filter_date)
+    try:
+        left = int(challenge_left)
+        right = int(challenge_right)
+        answer = int(challenge_answer)
+    except (TypeError, ValueError):
+        return redirect_with_message(requests_path, "Решите арифметический пример для удаления заявки", "error")
+    if not (1 <= left <= 9 and 1 <= right <= 9) or answer != left + right:
+        return redirect_with_message(requests_path, "Неверный ответ на арифметический пример", "error")
+
+    with get_db_connection() as conn:
+        ensure_app_tables(conn)
+        if not get_request_identity(conn, employee_key, response_id):
+            return redirect_with_message(requests_path, "Заявка не найдена", "error")
+        if not delete_request_records(conn, response_id):
+            return redirect_with_message(requests_path, "Заявка не найдена", "error")
+        conn.commit()
+
+    return redirect_with_message(requests_path, "Заявка удалена", "success")
 
 
 @app.post("/admin/locks/create")

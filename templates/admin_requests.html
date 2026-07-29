@@ -28,6 +28,26 @@
     .status-form { display: grid; gap: 6px; min-width: 180px; }
     .status-form select, .status-form button { padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; font-size: 13px; }
     .status-form button { background: #111827; color: #fff; cursor: pointer; }
+    .task-column { width: 300px; }
+    .task-cell { width: 300px; max-width: 300px; }
+    .task-cell-content { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .task-preview { display: block; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .delete-request-button { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: 1px solid #fecaca; border-radius: 9px; background: #fff; color: #b91c1c; cursor: pointer; }
+    .delete-request-button:hover { background: #fef2f2; border-color: #f87171; }
+    .delete-request-button:focus-visible { outline: 3px solid rgba(239, 68, 68, .24); outline-offset: 2px; }
+    .delete-dialog { width: min(92vw, 500px); border: 0; border-radius: 16px; padding: 0; box-shadow: 0 24px 70px rgba(15, 23, 42, .28); }
+    .delete-dialog::backdrop { background: rgba(15, 23, 42, .52); }
+    .delete-dialog-form { display: grid; gap: 16px; padding: 22px; }
+    .delete-dialog h2 { margin: 0; color: #991b1b; font-size: 22px; }
+    .delete-dialog p { margin: 0; line-height: 1.5; color: #475569; }
+    .delete-challenge { display: grid; gap: 8px; padding: 14px; border: 1px solid #fecaca; border-radius: 12px; background: #fff7f7; }
+    .delete-challenge label { font-weight: 700; color: #7f1d1d; }
+    .delete-challenge input { width: 140px; min-height: 42px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
+    .delete-challenge-error { min-height: 20px; color: #b91c1c; font-size: 13px; font-weight: 700; }
+    .delete-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+    .delete-dialog-actions button { min-height: 42px; padding: 8px 14px; border-radius: 10px; font: inherit; font-weight: 700; cursor: pointer; }
+    .delete-dialog-actions .secondary { border: 1px solid #cbd5e1; background: #fff; color: #111827; }
+    .delete-dialog-actions .danger { border: 1px solid #991b1b; background: #b91c1c; color: #fff; }
     .filters { display: grid; grid-template-columns: minmax(220px, 1.3fr) minmax(190px, .8fr) minmax(170px, .7fr); gap: 10px 12px; align-items: end; margin-bottom: 14px; }
     .filter-field { display: grid; gap: 6px; min-width: 0; }
     .filter-field label { font-size: 13px; font-weight: 700; color: #475569; }
@@ -101,7 +121,7 @@
           <th>Время</th>
           <th>Статус</th>
           <th>Условия</th>
-          <th>Задача</th>
+          <th class="task-column">Задача</th>
           <th>Факт</th>
           <th>Закрытие</th>
           <th>Действия</th>
@@ -115,7 +135,25 @@
             <td>{{ item.planned_work_time or '—' }}</td>
             <td><span class="badge {{ item.status }}">{{ item.status_label }}</span></td>
             <td>{{ item.payment_type or '—' }}</td>
-            <td>{{ item.task_description or '—' }}</td>
+            <td class="task-cell">
+              <div class="task-cell-content">
+                <span class="task-preview">{{ item.task_description or '—' }}</span>
+                <button
+                  type="button"
+                  class="delete-request-button"
+                  data-delete-request
+                  data-employee-key="{{ item.employee_key }}"
+                  data-response-id="{{ item.response_id }}"
+                  data-full-name="{{ item.full_name }}"
+                  data-planned-date="{{ item.planned_work_date_ru or '—' }}"
+                  aria-label="Удалить заявку {{ item.full_name }} за {{ item.planned_work_date_ru or 'неуказанную дату' }}"
+                >
+                  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              </div>
+            </td>
             <td>
               {% if item.actual_work_date or item.actual_work_time %}
                 {{ item.actual_work_date_ru or '—' }}<br />{{ item.actual_work_time or '' }}
@@ -157,6 +195,29 @@
     </table>
     </div>
   </div>
+  <dialog class="delete-dialog" id="delete-request-dialog" aria-labelledby="delete-request-title">
+    <form class="delete-dialog-form" id="delete-request-form" action="/admin/request/delete" method="post">
+      <h2 id="delete-request-title">Удалить заявку?</h2>
+      <p id="delete-request-summary"></p>
+      <p>Заявка и связанные с ней данные будут удалены из базы и перестанут попадать в отчеты. Отменить это действие нельзя.</p>
+      <input type="hidden" name="employee_key" />
+      <input type="hidden" name="response_id" />
+      <input type="hidden" name="challenge_left" />
+      <input type="hidden" name="challenge_right" />
+      <input type="hidden" name="filter_name" value="{{ filter_name }}" data-request-filter-name />
+      <input type="hidden" name="filter_status" value="{{ filter_status }}" data-request-filter-status />
+      <input type="hidden" name="filter_date" value="{{ filter_date }}" data-request-filter-date />
+      <div class="delete-challenge">
+        <label for="delete-challenge-answer">Для подтверждения решите пример: <span id="delete-challenge-text"></span></label>
+        <input id="delete-challenge-answer" name="challenge_answer" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]+" required />
+        <div class="delete-challenge-error" id="delete-challenge-error" aria-live="polite"></div>
+      </div>
+      <div class="delete-dialog-actions">
+        <button type="button" class="secondary" id="cancel-delete-request">Отмена</button>
+        <button type="submit" class="danger">Удалить</button>
+      </div>
+    </form>
+  </dialog>
   <script>
     const requestSearch = document.querySelector("#request-search");
     const requestStatusFilter = document.querySelector("#request-status-filter");
@@ -165,6 +226,15 @@
     const emptyRow = document.querySelector("[data-empty-row]");
     const filterResult = document.querySelector("#request-filter-result");
     const statusForms = [...document.querySelectorAll(".status-form")];
+    const deleteRequestDialog = document.querySelector("#delete-request-dialog");
+    const deleteRequestForm = document.querySelector("#delete-request-form");
+    const deleteRequestSummary = document.querySelector("#delete-request-summary");
+    const deleteChallengeText = document.querySelector("#delete-challenge-text");
+    const deleteChallengeAnswer = document.querySelector("#delete-challenge-answer");
+    const deleteChallengeError = document.querySelector("#delete-challenge-error");
+    const cancelDeleteRequest = document.querySelector("#cancel-delete-request");
+    const deleteRequestButtons = [...document.querySelectorAll("[data-delete-request]")];
+    const filterAwareForms = [...statusForms, deleteRequestForm].filter(Boolean);
 
     function maskFilterDate(value) {
       const digits = (value || "").replace(/\D/g, "").slice(0, 8);
@@ -195,7 +265,7 @@
         else url.searchParams.delete(key);
       });
       window.history.replaceState(null, "", url);
-      statusForms.forEach((form) => {
+      filterAwareForms.forEach((form) => {
         form.querySelector("[data-request-filter-name]").value = values.filter_name;
         form.querySelector("[data-request-filter-status]").value = values.filter_status;
         form.querySelector("[data-request-filter-date]").value = values.filter_date;
@@ -226,6 +296,37 @@
       applyRequestFilters();
     });
     statusForms.forEach((form) => form.addEventListener("submit", syncRequestFilterState));
+    deleteRequestButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const left = Math.floor(Math.random() * 8) + 2;
+        const right = Math.floor(Math.random() * 8) + 2;
+        deleteRequestForm.elements.employee_key.value = button.dataset.employeeKey;
+        deleteRequestForm.elements.response_id.value = button.dataset.responseId;
+        deleteRequestForm.elements.challenge_left.value = String(left);
+        deleteRequestForm.elements.challenge_right.value = String(right);
+        deleteRequestSummary.textContent = `${button.dataset.fullName}, плановая дата ${button.dataset.plannedDate}.`;
+        deleteChallengeText.textContent = `${left} + ${right} = ?`;
+        deleteChallengeAnswer.value = "";
+        deleteChallengeError.textContent = "";
+        syncRequestFilterState();
+        deleteRequestDialog.showModal();
+        window.requestAnimationFrame(() => deleteChallengeAnswer.focus());
+      });
+    });
+    cancelDeleteRequest.addEventListener("click", () => deleteRequestDialog.close());
+    deleteRequestDialog.addEventListener("click", (event) => {
+      if (event.target === deleteRequestDialog) deleteRequestDialog.close();
+    });
+    deleteRequestForm.addEventListener("submit", (event) => {
+      syncRequestFilterState();
+      const expected = Number(deleteRequestForm.elements.challenge_left.value)
+        + Number(deleteRequestForm.elements.challenge_right.value);
+      if (Number(deleteChallengeAnswer.value) !== expected) {
+        event.preventDefault();
+        deleteChallengeError.textContent = "Ответ неверный. Проверьте вычисление.";
+        deleteChallengeAnswer.focus();
+      }
+    });
     applyRequestFilters(false);
   </script>
 </body>

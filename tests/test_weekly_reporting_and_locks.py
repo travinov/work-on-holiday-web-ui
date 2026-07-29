@@ -766,6 +766,14 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn("Система B", cabinet.text)
 
     def test_create_request_rejects_invalid_date_time_payment_and_required_fields_without_inserting_rows(self) -> None:
+        self.assertIsNone(
+            web_ui.validate_required_request_fields(
+                payment_type="Отгул",
+                task_description="А" * 500,
+                justification="Причина",
+                systems=["Система A"],
+            )
+        )
         planned_date = future_date_iso(31)
         insert_planned_request(
             self.db_path,
@@ -796,6 +804,11 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                     {"payment_type": "Бонусом"},
                 ),
                 ("task_description", "Укажите задачу", {"task_description": ""}),
+                (
+                    "task_description_too_long",
+                    "Задача не может быть длиннее 500 символов",
+                    {"task_description": "А" * 501},
+                ),
                 ("justification", "Укажите обоснование", {"justification": ""}),
                 ("systems", "Укажите хотя бы одну систему", {"systems": ""}),
             ]
@@ -1737,10 +1750,15 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn('id="request-status-filter"', requests_response.text)
         self.assertIn('id="request-date-filter"', requests_response.text)
         self.assertIn("Открыть кабинет", requests_response.text)
+        self.assertIn('class="task-preview"', requests_response.text)
+        self.assertIn('data-delete-request', requests_response.text)
+        self.assertIn('id="delete-request-dialog"', requests_response.text)
+        self.assertIn('action="/admin/request/delete"', requests_response.text)
         self.assertIn('data-hamburger-menu="true"', requests_response.text)
         self.assertIn("22.04.2026", requests_response.text)
         self.assertEqual(200, test_data_response.status_code)
         self.assertIn("Генерация тестовых данных", test_data_response.text)
+        self.assertIn('maxlength="500"', test_data_response.text)
         self.assertIn('data-date-picker="true"', test_data_response.text)
         self.assertIn('data-time-mask="true"', test_data_response.text)
         self.assertIn('data-hamburger-menu="true"', test_data_response.text)
@@ -1910,6 +1928,11 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 ("employee_keys_empty", {"employee_keys": []}, "Выберите хотя бы одного сотрудника"),
                 ("systems_empty", {"systems": "   "}, "Укажите хотя бы одну АС"),
                 ("task_empty", {"task_description": ""}, "Укажите задачу"),
+                (
+                    "task_too_long",
+                    {"task_description": "А" * 501},
+                    "Задача не может быть длиннее 500 символов",
+                ),
                 ("justification_empty", {"justification": ""}, "Укажите обоснование"),
             ]
 
@@ -2004,6 +2027,11 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 "Некорректный тип компенсации. Допустимые значения: Отгул, Двойная оплата",
             ),
             ("task_empty", {"task_description": ""}, "Укажите задачу"),
+            (
+                "task_too_long",
+                {"task_description": "А" * 501},
+                "Задача не может быть длиннее 500 символов",
+            ),
             ("justification_empty", {"justification": ""}, "Укажите обоснование"),
             ("systems_empty", {"systems": "   "}, "Укажите хотя бы одну систему"),
         ]
@@ -2440,6 +2468,74 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
 
         self.assertEqual(303, correction.status_code)
         self.assertIn("заявка откорректирована", unquote(correction.headers["location"]).lower())
+
+    def test_admin_request_delete_requires_arithmetic_answer_and_removes_related_records(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=921,
+            full_name="Удаляев Илья Иванович",
+            full_name_key="удаляев илья иванович",
+            planned_date="2026-04-25",
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO app_request_state (
+                    request_uid, response_id, full_name_key, status, created_at, updated_at
+                ) VALUES (
+                    'req:921', 921, 'удаляев илья иванович', 'active',
+                    '2026-04-20T10:00:00', '2026-04-20T10:00:00'
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO app_report_lock (response_id, week_start, week_end, report_file, locked_at)
+                VALUES (921, '2026-04-20', '2026-04-26', 'report.xlsx', '2026-04-24T18:00:00')
+                """
+            )
+            conn.commit()
+
+        payload = {
+            "employee_key": "удаляев илья иванович",
+            "response_id": "921",
+            "challenge_left": "4",
+            "challenge_right": "3",
+            "challenge_answer": "7",
+            "filter_name": "Удаляев",
+            "filter_status": "active",
+            "filter_date": "25/04/2026",
+        }
+        with patch.object(web_ui, "DB_PATH", self.db_path):
+            anonymous_client = TestClient(web_ui.app)
+            denied = anonymous_client.post("/admin/request/delete", data=payload, follow_redirects=False)
+
+        self.assertEqual(303, denied.status_code)
+        self.assertIn("только администратору", unquote(denied.headers["location"]).lower())
+
+        with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(303, login_superuser(client).status_code)
+            wrong_answer = client.post(
+                "/admin/request/delete",
+                data={**payload, "challenge_answer": "8"},
+                follow_redirects=False,
+            )
+            deleted = client.post("/admin/request/delete", data=payload, follow_redirects=False)
+
+        self.assertEqual(303, wrong_answer.status_code)
+        self.assertIn("неверный ответ", unquote(wrong_answer.headers["location"]).lower())
+        self.assertEqual(303, deleted.status_code)
+        redirect_location = unquote(deleted.headers["location"])
+        self.assertIn("filter_name=Удаляев", redirect_location)
+        self.assertIn("filter_status=active", redirect_location)
+        self.assertIn("filter_date=25%2F04%2F2026", deleted.headers["location"])
+        self.assertIn("заявка удалена", redirect_location.lower())
+        with sqlite3.connect(self.db_path) as conn:
+            self.assertIsNone(conn.execute("SELECT 1 FROM survey_responses WHERE response_id = 921").fetchone())
+            self.assertIsNone(conn.execute("SELECT 1 FROM response_systems WHERE response_id = 921").fetchone())
+            self.assertIsNone(conn.execute("SELECT 1 FROM app_request_state WHERE response_id = 921").fetchone())
+            self.assertIsNone(conn.execute("SELECT 1 FROM app_report_lock WHERE response_id = 921").fetchone())
 
     def test_admin_invalid_status_transitions_and_completed_without_fact_are_rejected(self) -> None:
         insert_planned_request(

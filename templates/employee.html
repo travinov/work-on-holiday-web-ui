@@ -326,7 +326,8 @@
                 <span class="tooltip-text">Название релиза, задачи или вида работ.</span>
               </span>
             </label>
-            <textarea id="create-task-description" name="task_description" placeholder="Например: релиз ФП05, сопровождение ночного окна" required></textarea>
+            <textarea id="create-task-description" name="task_description" maxlength="{{ task_description_max_length }}" placeholder="Например: релиз ФП05, сопровождение ночного окна" required></textarea>
+            <div class="field-hint">Не более {{ task_description_max_length }} символов.</div>
           </div>
           <div class="field-card full-width">
             <label for="create-justification">Обоснование
@@ -485,7 +486,8 @@
                   </div>
                   <div class="field-card full-width">
                     <label for="correct-task-{{ req.response_id }}">Задача</label>
-                    <textarea id="correct-task-{{ req.response_id }}" name="task_description" required>{{ req.task_description }}</textarea>
+                    <textarea id="correct-task-{{ req.response_id }}" name="task_description" maxlength="{{ task_description_max_length }}" required>{{ req.task_description }}</textarea>
+                    <div class="field-hint">Не более {{ task_description_max_length }} символов.</div>
                   </div>
                   <div class="field-card full-width">
                     <label for="correct-justification-{{ req.response_id }}">Обоснование</label>
