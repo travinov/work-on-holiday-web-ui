@@ -214,9 +214,10 @@
       </form>
 
       {% if pending_employee_key %}
-        <form action="/employee/forgot-token" method="post" style="margin-top: 10px;">
+        <form action="/employee/forgot-token" method="post" class="row" style="margin-top: 10px;">
           <input type="hidden" name="full_name" value="{{ pending_employee_name }}" />
           <button type="submit" class="light">Забыл токен</button>
+          <span class="meta" style="margin-top: 0;">Обратитесь к Морозовой Анне для получения нового.</span>
         </form>
       {% endif %}
     </div>
