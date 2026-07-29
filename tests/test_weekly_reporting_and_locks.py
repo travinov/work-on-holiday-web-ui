@@ -2394,11 +2394,22 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             self.assertEqual(303, login_superuser(client).status_code)
             response = client.post(
                 "/admin/request/status",
-                data={"employee_key": "возвратов виктор иванович", "response_id": "920", "status": "active"},
+                data={
+                    "employee_key": "возвратов виктор иванович",
+                    "response_id": "920",
+                    "status": "active",
+                    "filter_name": "Возвратов",
+                    "filter_status": "in_progress",
+                    "filter_date": "22/04/2026",
+                },
                 follow_redirects=False,
             )
 
         self.assertEqual(303, response.status_code)
+        redirect_location = unquote(response.headers["location"])
+        self.assertIn("filter_name=Возвратов", redirect_location)
+        self.assertIn("filter_status=in_progress", redirect_location)
+        self.assertIn("filter_date=22%2F04%2F2026", response.headers["location"])
         with sqlite3.connect(self.db_path) as conn:
             status, returned_for_correction = conn.execute(
                 "SELECT status, returned_for_correction FROM app_request_state WHERE response_id = 920"

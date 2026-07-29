@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterator
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -280,6 +281,45 @@ def is_superuser_authenticated(request: Request) -> bool:
 def redirect_with_message(path: str, msg: str, level: str = "info") -> RedirectResponse:
     separator = "&" if "?" in path else "?"
     return RedirectResponse(url=f"{path}{separator}msg={msg}&level={level}", status_code=303)
+
+
+def normalize_admin_request_filters(
+    filter_name: str = "",
+    filter_status: str = "",
+    filter_date: str = "",
+) -> tuple[str, str, str]:
+    normalized_name = filter_name.strip()[:200]
+    normalized_status = filter_status if filter_status in VALID_STATUSES else ""
+    date_digits = re.sub(r"\D", "", filter_date)[:8]
+    date_parts = [date_digits[:2]]
+    if len(date_digits) > 2:
+        date_parts.append(date_digits[2:4])
+    if len(date_digits) > 4:
+        date_parts.append(date_digits[4:8])
+    normalized_date = "/".join(part for part in date_parts if part)
+    return normalized_name, normalized_status, normalized_date
+
+
+def build_admin_requests_path(
+    filter_name: str = "",
+    filter_status: str = "",
+    filter_date: str = "",
+) -> str:
+    normalized_name, normalized_status, normalized_date = normalize_admin_request_filters(
+        filter_name,
+        filter_status,
+        filter_date,
+    )
+    params = {
+        key: value
+        for key, value in (
+            ("filter_name", normalized_name),
+            ("filter_status", normalized_status),
+            ("filter_date", normalized_date),
+        )
+        if value
+    }
+    return f"/admin/requests?{urlencode(params)}" if params else "/admin/requests"
 
 
 def hash_employee_token(token: str) -> str:
@@ -1712,10 +1752,22 @@ def admin_users(request: Request, msg: str | None = None, level: str = "info") -
 
 
 @app.get("/admin/requests", response_class=HTMLResponse)
-def admin_requests(request: Request, msg: str | None = None, level: str = "info") -> HTMLResponse:
+def admin_requests(
+    request: Request,
+    msg: str | None = None,
+    level: str = "info",
+    filter_name: str = "",
+    filter_status: str = "",
+    filter_date: str = "",
+) -> HTMLResponse:
     admin_session = get_admin_session(request)
     if not admin_session:
         return RedirectResponse(url="/?msg=Раздел заявок доступен только администратору&level=error", status_code=303)
+    normalized_name, normalized_status, normalized_date = normalize_admin_request_filters(
+        filter_name,
+        filter_status,
+        filter_date,
+    )
     return templates.TemplateResponse(
         request,
         "admin_requests.html",
@@ -1725,6 +1777,9 @@ def admin_requests(request: Request, msg: str | None = None, level: str = "info"
             "level": level,
             "request": request,
             "admin_session": admin_session,
+            "filter_name": normalized_name,
+            "filter_status": normalized_status,
+            "filter_date": normalized_date,
         },
     )
 
@@ -2623,17 +2678,21 @@ def admin_update_request_status(
     employee_key: str = Form(...),
     response_id: int = Form(...),
     status: str = Form(...),
+    filter_name: str = Form(""),
+    filter_status: str = Form(""),
+    filter_date: str = Form(""),
 ) -> RedirectResponse:
     if not is_admin_or_superuser_request(request):
         return redirect_with_message("/", "Изменение статуса заявки доступно только администратору", "error")
+    requests_path = build_admin_requests_path(filter_name, filter_status, filter_date)
     if status not in VALID_STATUSES:
-        return redirect_with_message("/admin/requests", "Некорректный статус заявки", "error")
+        return redirect_with_message(requests_path, "Некорректный статус заявки", "error")
 
     with get_db_connection() as conn:
         ensure_app_tables(conn)
         identity = get_request_identity(conn, employee_key, response_id)
         if not identity:
-            return redirect_with_message("/admin/requests", "Заявка не найдена", "error")
+            return redirect_with_message(requests_path, "Заявка не найдена", "error")
         request_uid, full_name_key = identity
         existing = get_request_state(conn, request_uid)
         current_status = existing.get("status") if existing else "active"
@@ -2642,7 +2701,7 @@ def admin_update_request_status(
 
         if status not in ADMIN_STATUS_TRANSITIONS[current_status]:
             return redirect_with_message(
-                "/admin/requests",
+                requests_path,
                 f"Недопустимый переход статуса: {current_status} -> {status}",
                 "error",
             )
@@ -2678,10 +2737,10 @@ def admin_update_request_status(
                 },
             )
         except ValueError as exc:
-            return redirect_with_message("/admin/requests", str(exc), "error")
+            return redirect_with_message(requests_path, str(exc), "error")
         conn.commit()
 
-    return redirect_with_message("/admin/requests", "Статус заявки обновлен", "success")
+    return redirect_with_message(requests_path, "Статус заявки обновлен", "success")
 
 
 @app.post("/admin/locks/create")

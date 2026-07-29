@@ -73,22 +73,22 @@
     <div class="filters" aria-label="Фильтры заявок">
       <div class="filter-field">
         <label for="request-search">Сотрудник</label>
-        <input id="request-search" type="search" placeholder="Поиск по ФИО" autocomplete="off" />
+        <input id="request-search" type="search" value="{{ filter_name }}" placeholder="Поиск по ФИО" autocomplete="off" />
       </div>
       <div class="filter-field">
         <label for="request-status-filter">Статус</label>
         <select id="request-status-filter">
-          <option value="">Все статусы</option>
-          <option value="active">Заявка подана</option>
-          <option value="in_progress">Принята в работу</option>
-          <option value="in_fact">Факт указан</option>
-          <option value="completed">Закрыта</option>
-          <option value="cancelled">Отменена</option>
+          <option value="" {% if not filter_status %}selected{% endif %}>Все статусы</option>
+          <option value="active" {% if filter_status == 'active' %}selected{% endif %}>Заявка подана</option>
+          <option value="in_progress" {% if filter_status == 'in_progress' %}selected{% endif %}>Принята в работу</option>
+          <option value="in_fact" {% if filter_status == 'in_fact' %}selected{% endif %}>Факт указан</option>
+          <option value="completed" {% if filter_status == 'completed' %}selected{% endif %}>Закрыта</option>
+          <option value="cancelled" {% if filter_status == 'cancelled' %}selected{% endif %}>Отменена</option>
         </select>
       </div>
       <div class="filter-field">
         <label for="request-date-filter">Плановая дата</label>
-        <input id="request-date-filter" class="filter-date" type="text" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" maxlength="10" />
+        <input id="request-date-filter" class="filter-date" type="text" value="{{ filter_date }}" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" maxlength="10" />
       </div>
     </div>
     <p class="filter-result" id="request-filter-result" aria-live="polite"></p>
@@ -135,6 +135,9 @@
               <form class="status-form" action="/admin/request/status" method="post" style="margin-top: 8px;">
                 <input type="hidden" name="employee_key" value="{{ item.employee_key }}" />
                 <input type="hidden" name="response_id" value="{{ item.response_id }}" />
+                <input type="hidden" name="filter_name" value="{{ filter_name }}" data-request-filter-name />
+                <input type="hidden" name="filter_status" value="{{ filter_status }}" data-request-filter-status />
+                <input type="hidden" name="filter_date" value="{{ filter_date }}" data-request-filter-date />
                 <label class="sr-only" for="request-status-{{ loop.index }}">Статус заявки {{ item.full_name }}</label>
                 <select id="request-status-{{ loop.index }}" name="status">
                   {% for target in item.allowed_statuses %}
@@ -161,6 +164,7 @@
     const requestRows = [...document.querySelectorAll("[data-request-row]")];
     const emptyRow = document.querySelector("[data-empty-row]");
     const filterResult = document.querySelector("#request-filter-result");
+    const statusForms = [...document.querySelectorAll(".status-form")];
 
     function maskFilterDate(value) {
       const digits = (value || "").replace(/\D/g, "").slice(0, 8);
@@ -177,7 +181,28 @@
       return `${digits.slice(4, 8)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}`;
     }
 
-    function applyRequestFilters() {
+    function syncRequestFilterState() {
+      const values = {
+        filter_name: requestSearch.value.trim(),
+        filter_status: requestStatusFilter.value,
+        filter_date: requestDateFilter.value,
+      };
+      const url = new URL(window.location.href);
+      url.searchParams.delete("msg");
+      url.searchParams.delete("level");
+      Object.entries(values).forEach(([key, value]) => {
+        if (value) url.searchParams.set(key, value);
+        else url.searchParams.delete(key);
+      });
+      window.history.replaceState(null, "", url);
+      statusForms.forEach((form) => {
+        form.querySelector("[data-request-filter-name]").value = values.filter_name;
+        form.querySelector("[data-request-filter-status]").value = values.filter_status;
+        form.querySelector("[data-request-filter-date]").value = values.filter_date;
+      });
+    }
+
+    function applyRequestFilters(syncState = true) {
       const nameQuery = requestSearch.value.trim().toLocaleLowerCase("ru-RU");
       const status = requestStatusFilter.value;
       const dateValue = filterDateToIso(requestDateFilter.value);
@@ -191,6 +216,7 @@
       });
       emptyRow.hidden = visibleCount !== 0;
       filterResult.textContent = `Показано заявок: ${visibleCount} из ${requestRows.length}`;
+      if (syncState) syncRequestFilterState();
     }
 
     requestSearch.addEventListener("input", applyRequestFilters);
@@ -199,7 +225,8 @@
       requestDateFilter.value = maskFilterDate(requestDateFilter.value);
       applyRequestFilters();
     });
-    applyRequestFilters();
+    statusForms.forEach((form) => form.addEventListener("submit", syncRequestFilterState));
+    applyRequestFilters(false);
   </script>
 </body>
 </html>
