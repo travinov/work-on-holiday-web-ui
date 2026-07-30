@@ -105,7 +105,7 @@
           <input type="hidden" data-week-anchor value="{{ default_week_from }}" /><input id="lock-week-anchor" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
           <input type="hidden" name="date_from" value="{{ default_week_from }}" />
           <input type="hidden" name="date_to" value="{{ default_week_to }}" />
-          <input type="text" name="comment" placeholder="Комментарий" aria-label="Комментарий к закрытию периода" />
+          <input type="text" name="comment" placeholder="Комментарий" maxlength="{{ period_lock_comment_max_length }}" title="Не более {{ period_lock_comment_max_length }} символов" aria-label="Комментарий к закрытию периода" />
           <button type="submit">Закрыть</button>
         </div>
         <div class="meta" data-week-label aria-live="polite"></div>

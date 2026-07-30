@@ -86,7 +86,7 @@
                   <option value="archived" {% if user.employee_status == 'archived' %}selected{% endif %}>Архив</option>
                 </select>
                 <label class="sr-only" for="status-reason-{{ loop.index }}">Причина статуса {{ user.full_name }}</label>
-                <input id="status-reason-{{ loop.index }}" type="text" name="status_reason" value="{{ user.status_reason or '' }}" placeholder="Причина" />
+                <input id="status-reason-{{ loop.index }}" type="text" name="status_reason" value="{{ user.status_reason or '' }}" placeholder="Причина" maxlength="{{ status_reason_max_length }}" title="Не более {{ status_reason_max_length }} символов" />
                 <button type="submit">Сохранить</button>
               </form>
             </td>

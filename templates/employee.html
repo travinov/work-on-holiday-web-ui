@@ -183,6 +183,7 @@
             placeholder="Фамилия Имя Отчество"
             class="login-input"
             value="{{ pending_employee_name or '' }}"
+            maxlength="{{ full_name_max_length }}"
             required
           />
         </div>
@@ -193,7 +194,7 @@
             <span class="tooltip" tabindex="0">?
               <span class="tooltip-text">Введите ранее выданный токен. Если токен потерян, используйте кнопку Забыл токен.</span>
             </span>
-            <input id="employee-access-token" class="login-input" type="text" name="access_token" placeholder="Токен доступа" required />
+            <input id="employee-access-token" class="login-input" type="text" name="access_token" placeholder="Токен доступа" maxlength="{{ access_token_max_length }}" required />
             <button type="submit">Войти</button>
           </div>
         {% else %}
@@ -335,7 +336,8 @@
                 <span class="tooltip-text">Почему работы нужно выполнять именно в выходной день.</span>
               </span>
             </label>
-            <textarea id="create-justification" name="justification" placeholder="Например: недоступность окна в рабочее время" required></textarea>
+            <textarea id="create-justification" name="justification" maxlength="{{ justification_max_length }}" placeholder="Например: недоступность окна в рабочее время" required></textarea>
+            <div class="field-hint">Не более {{ justification_max_length }} символов.</div>
           </div>
           <div class="field-card full-width">
             <label for="create-systems-input">АС
@@ -344,11 +346,17 @@
               </span>
             </label>
             <input type="hidden" name="systems" data-systems-hidden value="" />
-            <div class="systems-editor" data-systems-editor>
+            <div
+              class="systems-editor"
+              data-systems-editor
+              data-system-name-max-length="{{ system_name_max_length }}"
+              data-systems-max-count="{{ systems_max_count }}"
+              data-systems-total-max-length="{{ systems_total_max_length }}"
+            >
               <div class="systems-token-list" data-systems-token-list></div>
-              <input id="create-systems-input" type="text" class="systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" aria-describedby="create-systems-hint" />
+              <input id="create-systems-input" type="text" class="systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" maxlength="{{ systems_total_max_length }}" aria-describedby="create-systems-hint" />
             </div>
-            <div class="field-hint" id="create-systems-hint">После ввода одной АС нажмите Enter или Tab. Также можно вставить список через |, запятую или точку с запятой.</div>
+            <div class="field-hint" id="create-systems-hint">До {{ systems_max_count }} АС, не более {{ system_name_max_length }} символов каждая. После ввода одной АС нажмите Enter или Tab. Список можно вставить через |, запятую или точку с запятой.</div>
           </div>
         </div>
         <div class="create-actions">
@@ -491,16 +499,23 @@
                   </div>
                   <div class="field-card full-width">
                     <label for="correct-justification-{{ req.response_id }}">Обоснование</label>
-                    <textarea id="correct-justification-{{ req.response_id }}" name="justification" required>{{ req.justification }}</textarea>
+                    <textarea id="correct-justification-{{ req.response_id }}" name="justification" maxlength="{{ justification_max_length }}" required>{{ req.justification }}</textarea>
+                    <div class="field-hint">Не более {{ justification_max_length }} символов.</div>
                   </div>
                   <div class="field-card full-width">
                     <label for="correct-systems-{{ req.response_id }}">АС</label>
                     <input type="hidden" name="systems" data-systems-hidden value="{{ req.systems_multiline }}" />
-                    <div class="systems-editor" data-systems-editor>
+                    <div
+                      class="systems-editor"
+                      data-systems-editor
+                      data-system-name-max-length="{{ system_name_max_length }}"
+                      data-systems-max-count="{{ systems_max_count }}"
+                      data-systems-total-max-length="{{ systems_total_max_length }}"
+                    >
                       <div class="systems-token-list" data-systems-token-list></div>
-                      <input id="correct-systems-{{ req.response_id }}" type="text" class="systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" />
+                      <input id="correct-systems-{{ req.response_id }}" type="text" class="systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" maxlength="{{ systems_total_max_length }}" />
                     </div>
-                    <div class="field-hint">После ввода одной АС нажмите Enter или Tab. Также можно вставить список через |, запятую или точку с запятой.</div>
+                    <div class="field-hint">До {{ systems_max_count }} АС, не более {{ system_name_max_length }} символов каждая. После ввода одной АС нажмите Enter или Tab. Список можно вставить через |, запятую или точку с запятой.</div>
                   </div>
                 </div>
                 <div class="request-actions"><button type="submit">Сохранить корректировку</button></div>
@@ -551,7 +566,23 @@
       const input = editor.querySelector('[data-systems-input]');
       if (!hidden || !list || !input) return;
 
+      const systemNameMaxLength = Number(editor.dataset.systemNameMaxLength) || 150;
+      const systemsMaxCount = Number(editor.dataset.systemsMaxCount) || 6;
+      const systemsTotalMaxLength = Number(editor.dataset.systemsTotalMaxLength) || 1000;
       let systems = splitSystemsInput(hidden.value);
+
+      const validateSystems = (candidateSystems) => {
+        if (candidateSystems.length > systemsMaxCount) {
+          return `Можно указать не более ${systemsMaxCount} АС.`;
+        }
+        if (candidateSystems.some((systemName) => systemName.length > systemNameMaxLength)) {
+          return `Название одной АС не может быть длиннее ${systemNameMaxLength} символов.`;
+        }
+        if (candidateSystems.join(" | ").length > systemsTotalMaxLength) {
+          return `Перечень АС не может быть длиннее ${systemsTotalMaxLength} символов.`;
+        }
+        return "";
+      };
 
       const syncHidden = () => {
         const nextValue = systems.join(" | ");
@@ -577,6 +608,7 @@
           remove.setAttribute("aria-label", `Удалить АС ${systemName}`);
           remove.addEventListener("click", () => {
             systems.splice(index, 1);
+            input.setCustomValidity("");
             syncHidden();
             render();
             input.focus();
@@ -589,9 +621,14 @@
       const addSystems = (rawValue) => {
         const nextSystems = splitSystemsInput(rawValue);
         if (!nextSystems.length) return false;
+        const candidateSystems = [...systems];
         nextSystems.forEach((systemName) => {
-          if (!systems.includes(systemName)) systems.push(systemName);
+          if (!candidateSystems.includes(systemName)) candidateSystems.push(systemName);
         });
+        const validationError = validateSystems(candidateSystems);
+        input.setCustomValidity(validationError);
+        if (validationError) return false;
+        systems = candidateSystems;
         input.value = "";
         syncHidden();
         render();
@@ -604,6 +641,7 @@
         if (!isDelimiter) {
           if (event.key === "Backspace" && !input.value && systems.length) {
             systems.pop();
+            input.setCustomValidity("");
             syncHidden();
             render();
           }
@@ -615,16 +653,26 @@
           return;
         }
 
-        if (event.key !== "Tab") event.preventDefault();
+        if (input.validationMessage) {
+          event.preventDefault();
+          input.reportValidity();
+        } else if (event.key !== "Tab") {
+          event.preventDefault();
+        }
       });
       input.addEventListener("input", () => {
+        input.setCustomValidity("");
         if (/[\n|,;]/.test(input.value)) addSystems(input.value);
       });
       input.addEventListener("blur", () => {
         addSystems(input.value);
       });
-      input.form?.addEventListener("submit", () => {
-        addSystems(input.value);
+      input.form?.addEventListener("submit", (event) => {
+        if (input.value.trim() && !addSystems(input.value)) {
+          event.preventDefault();
+          input.reportValidity();
+          return;
+        }
         syncHidden();
       });
       editor.syncFromHidden = () => {
@@ -634,6 +682,7 @@
 
       syncHidden();
       render();
+      input.setCustomValidity(validateSystems(systems));
     }
 
     document.querySelectorAll('[data-systems-editor]').forEach(attachSystemsEditor);

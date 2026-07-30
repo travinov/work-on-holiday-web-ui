@@ -56,10 +56,31 @@ CYRILLIC_NAME_PART_PATTERN = re.compile(r"^[А-ЯЁа-яё]+(?:-[А-ЯЁа-яё]
 ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ALLOWED_PAYMENT_TYPES = ("Отгул", "Двойная оплата")
 TASK_DESCRIPTION_MAX_LENGTH = 500
+JUSTIFICATION_MAX_LENGTH = 500
+FULL_NAME_MAX_LENGTH = 150
+FULL_NAME_PART_MAX_LENGTH = 50
+ACCESS_TOKEN_MAX_LENGTH = 128
+SYSTEM_NAME_MAX_LENGTH = 150
+SYSTEMS_MAX_COUNT = 6
+SYSTEMS_TOTAL_MAX_LENGTH = 1000
+STATUS_REASON_MAX_LENGTH = 300
+PERIOD_LOCK_COMMENT_MAX_LENGTH = 500
+ADMIN_FILTER_NAME_MAX_LENGTH = 150
+DELETE_CHALLENGE_ANSWER_MAX_LENGTH = 3
 
 app = FastAPI(title="Work On Holiday - Web UI")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.globals["task_description_max_length"] = TASK_DESCRIPTION_MAX_LENGTH
+templates.env.globals["justification_max_length"] = JUSTIFICATION_MAX_LENGTH
+templates.env.globals["full_name_max_length"] = FULL_NAME_MAX_LENGTH
+templates.env.globals["access_token_max_length"] = ACCESS_TOKEN_MAX_LENGTH
+templates.env.globals["system_name_max_length"] = SYSTEM_NAME_MAX_LENGTH
+templates.env.globals["systems_max_count"] = SYSTEMS_MAX_COUNT
+templates.env.globals["systems_total_max_length"] = SYSTEMS_TOTAL_MAX_LENGTH
+templates.env.globals["status_reason_max_length"] = STATUS_REASON_MAX_LENGTH
+templates.env.globals["period_lock_comment_max_length"] = PERIOD_LOCK_COMMENT_MAX_LENGTH
+templates.env.globals["admin_filter_name_max_length"] = ADMIN_FILTER_NAME_MAX_LENGTH
+templates.env.globals["delete_challenge_answer_max_length"] = DELETE_CHALLENGE_ANSWER_MAX_LENGTH
 
 ADMIN_STATUS_TRANSITIONS = {
     "active": {"active", "in_progress", "cancelled"},
@@ -232,7 +253,14 @@ def lunch_warning_for_time(value: str | None) -> str:
 
 def validate_new_employee_full_name(value: str) -> bool:
     parts = " ".join((value or "").strip().split()).split(" ")
-    return len(parts) == 3 and all(CYRILLIC_NAME_PART_PATTERN.fullmatch(part) for part in parts)
+    return (
+        len(" ".join(parts)) <= FULL_NAME_MAX_LENGTH
+        and len(parts) == 3
+        and all(
+            len(part) <= FULL_NAME_PART_MAX_LENGTH and CYRILLIC_NAME_PART_PATTERN.fullmatch(part)
+            for part in parts
+        )
+    )
 
 
 def normalize_systems_text(value: str) -> str:
@@ -290,7 +318,7 @@ def normalize_admin_request_filters(
     filter_status: str = "",
     filter_date: str = "",
 ) -> tuple[str, str, str]:
-    normalized_name = filter_name.strip()[:200]
+    normalized_name = filter_name.strip()[:ADMIN_FILTER_NAME_MAX_LENGTH]
     normalized_status = filter_status if filter_status in VALID_STATUSES else ""
     date_digits = re.sub(r"\D", "", filter_date)[:8]
     date_parts = [date_digits[:2]]
@@ -534,6 +562,8 @@ def update_employee_admin_role(conn: sqlite3.Connection, full_name_key: str, is_
 def update_employee_status(conn: sqlite3.Connection, full_name_key: str, status: str, reason: str, updated_by: str) -> None:
     if status not in {"active", "blocked", "archived"}:
         raise ValueError("Некорректный статус пользователя")
+    if len(reason.strip()) > STATUS_REASON_MAX_LENGTH:
+        raise ValueError(f"Причина статуса не может быть длиннее {STATUS_REASON_MAX_LENGTH} символов")
     ensure_employee_profile_row(conn, full_name_key)
     now = datetime.now().isoformat(timespec="seconds")
     updates = {
@@ -709,6 +739,8 @@ def create_period_lock(
 ) -> None:
     if lock_type not in {"planning", "actual"}:
         raise ValueError("Некорректный тип блокировки")
+    if len(comment.strip()) > PERIOD_LOCK_COMMENT_MAX_LENGTH:
+        raise ValueError(f"Комментарий не может быть длиннее {PERIOD_LOCK_COMMENT_MAX_LENGTH} символов")
     parsed_from = parse_iso_date(date_from)
     parsed_to = parse_iso_date(date_to)
     if parsed_from > parsed_to:
@@ -944,8 +976,16 @@ def validate_required_request_fields(
         return f"Задача не может быть длиннее {TASK_DESCRIPTION_MAX_LENGTH} символов"
     if not justification.strip():
         return "Укажите обоснование"
+    if len(justification.strip()) > JUSTIFICATION_MAX_LENGTH:
+        return f"Обоснование не может быть длиннее {JUSTIFICATION_MAX_LENGTH} символов"
     if not systems:
         return "Укажите хотя бы одну систему"
+    if len(systems) > SYSTEMS_MAX_COUNT:
+        return f"Можно указать не более {SYSTEMS_MAX_COUNT} АС"
+    if any(len(system) > SYSTEM_NAME_MAX_LENGTH for system in systems):
+        return f"Название одной АС не может быть длиннее {SYSTEM_NAME_MAX_LENGTH} символов"
+    if len(normalize_systems_text(" | ".join(systems))) > SYSTEMS_TOTAL_MAX_LENGTH:
+        return f"Перечень АС не может быть длиннее {SYSTEMS_TOTAL_MAX_LENGTH} символов"
     return None
 
 
@@ -1868,6 +1908,24 @@ async def admin_create_test_data(request: Request) -> RedirectResponse:
         return redirect_with_message("/admin/test-data", "Выберите хотя бы одного сотрудника", "error")
     if not systems:
         return redirect_with_message("/admin/test-data", "Укажите хотя бы одну АС", "error")
+    if len(systems) > SYSTEMS_MAX_COUNT:
+        return redirect_with_message(
+            "/admin/test-data",
+            f"Можно указать не более {SYSTEMS_MAX_COUNT} АС",
+            "error",
+        )
+    if any(len(system) > SYSTEM_NAME_MAX_LENGTH for system in systems):
+        return redirect_with_message(
+            "/admin/test-data",
+            f"Название одной АС не может быть длиннее {SYSTEM_NAME_MAX_LENGTH} символов",
+            "error",
+        )
+    if len(normalize_systems_text(" | ".join(systems))) > SYSTEMS_TOTAL_MAX_LENGTH:
+        return redirect_with_message(
+            "/admin/test-data",
+            f"Перечень АС не может быть длиннее {SYSTEMS_TOTAL_MAX_LENGTH} символов",
+            "error",
+        )
     if not task_description:
         return redirect_with_message("/admin/test-data", "Укажите задачу", "error")
     if len(task_description) > TASK_DESCRIPTION_MAX_LENGTH:
@@ -1878,6 +1936,12 @@ async def admin_create_test_data(request: Request) -> RedirectResponse:
         )
     if not justification:
         return redirect_with_message("/admin/test-data", "Укажите обоснование", "error")
+    if len(justification) > JUSTIFICATION_MAX_LENGTH:
+        return redirect_with_message(
+            "/admin/test-data",
+            f"Обоснование не может быть длиннее {JUSTIFICATION_MAX_LENGTH} символов",
+            "error",
+        )
 
     employee_map = {employee["employee_key"]: employee for employee in get_admin_test_data_employees()}
     unknown_keys = [key for key in employee_keys if key not in employee_map]
@@ -2004,6 +2068,18 @@ def employee_login(
 
     if not full_name:
         return redirect_with_message("/employee", "Укажите ФИО", "error")
+    if len(full_name) > FULL_NAME_MAX_LENGTH:
+        return redirect_with_message(
+            "/employee",
+            f"ФИО не может быть длиннее {FULL_NAME_MAX_LENGTH} символов",
+            "error",
+        )
+    if len(access_token) > ACCESS_TOKEN_MAX_LENGTH:
+        return redirect_with_message(
+            "/employee",
+            f"Токен не может быть длиннее {ACCESS_TOKEN_MAX_LENGTH} символов",
+            "error",
+        )
 
     with get_db_connection() as conn:
         ensure_app_tables(conn)
@@ -2012,7 +2088,11 @@ def employee_login(
             if not validate_new_employee_full_name(full_name):
                 return redirect_with_message(
                     "/employee",
-                    "Для новой регистрации укажите ровно три части ФИО кириллицей; буква Ё и дефис разрешены",
+                    (
+                        "Для новой регистрации укажите ровно три части ФИО кириллицей; "
+                        f"не более {FULL_NAME_PART_MAX_LENGTH} символов в каждой части и "
+                        f"{FULL_NAME_MAX_LENGTH} символов во всем ФИО; буква Ё и дефис разрешены"
+                    ),
                     "error",
                 )
             employee = register_employee_directory_entry(conn, full_name)
@@ -2190,6 +2270,12 @@ def employee_logout() -> RedirectResponse:
 @app.post("/employee/forgot-token")
 def employee_forgot_token(full_name: str = Form(...)) -> RedirectResponse:
     full_name = full_name.strip()
+    if len(full_name) > FULL_NAME_MAX_LENGTH:
+        return redirect_with_message(
+            "/employee",
+            f"ФИО не может быть длиннее {FULL_NAME_MAX_LENGTH} символов",
+            "error",
+        )
     with get_db_connection() as conn:
         ensure_app_tables(conn)
         employee = resolve_employee_by_name(conn, full_name)
@@ -2780,6 +2866,8 @@ def admin_delete_request(
         return redirect_with_message("/", "Удаление заявки доступно только администратору", "error")
 
     requests_path = build_admin_requests_path(filter_name, filter_status, filter_date)
+    if len(challenge_answer.strip()) > DELETE_CHALLENGE_ANSWER_MAX_LENGTH:
+        return redirect_with_message(requests_path, "Некорректный ответ на проверочный пример", "error")
     try:
         left = int(challenge_left)
         right = int(challenge_right)

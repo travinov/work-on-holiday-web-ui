@@ -632,12 +632,24 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 data={"full_name": "Иванов 1ван Иванович"},
                 follow_redirects=False,
             )
+            invalid_long_part = client.post(
+                "/employee/login",
+                data={"full_name": f"{'А' * 51} Иван Иванович"},
+                follow_redirects=False,
+            )
+            invalid_long_name = client.post(
+                "/employee/login",
+                data={"full_name": " ".join(["А" * 50, "Б" * 50, "В" * 50])},
+                follow_redirects=False,
+            )
 
         self.assertEqual(200, valid_login.status_code)
         self.assertIn("Токен сотрудника создан", valid_login.text)
-        for response in (invalid_two_parts, invalid_latin, invalid_digits):
+        for response in (invalid_two_parts, invalid_latin, invalid_digits, invalid_long_part):
             self.assertEqual(303, response.status_code)
             self.assertIn("новой регистрации", unquote(response.headers["location"]).lower())
+        self.assertEqual(303, invalid_long_name.status_code)
+        self.assertIn("фио не может быть длиннее 150 символов", unquote(invalid_long_name.headers["location"]).lower())
 
         with patch.object(web_ui, "DB_PATH", self.db_path):
             legacy_client = TestClient(web_ui.app)
@@ -810,7 +822,22 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                     {"task_description": "А" * 501},
                 ),
                 ("justification", "Укажите обоснование", {"justification": ""}),
+                (
+                    "justification_too_long",
+                    "Обоснование не может быть длиннее 500 символов",
+                    {"justification": "А" * 501},
+                ),
                 ("systems", "Укажите хотя бы одну систему", {"systems": ""}),
+                (
+                    "system_name_too_long",
+                    "Название одной АС не может быть длиннее 150 символов",
+                    {"systems": "А" * 151},
+                ),
+                (
+                    "systems_too_many",
+                    "Можно указать не более 6 АС",
+                    {"systems": " | ".join(f"Система {index}" for index in range(7))},
+                ),
             ]
             for field_name, expected_message, overrides in cases:
                 with self.subTest(field=field_name):
@@ -1166,6 +1193,14 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             self.assertIn("pending_employee_key", decoded_location)
 
             client.cookies.clear()
+            long_token_login = client.post(
+                "/employee/login",
+                data={"full_name": "Смирнов Иван Олегович", "access_token": "x" * 129},
+                follow_redirects=False,
+            )
+            self.assertEqual(303, long_token_login.status_code)
+            self.assertIn("токен не может быть длиннее 128 символов", unquote(long_token_login.headers["location"]).lower())
+
             token_login = client.post(
                 "/employee/login",
                 data={"full_name": "Смирнов Иван Олегович", "access_token": token},
@@ -1724,6 +1759,9 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             users_response = client.get("/admin/users")
             requests_response = client.get("/admin/requests")
             test_data_response = client.get("/admin/test-data")
+            employee_login_response = client.get(
+                "/employee?pending_employee_key=тестов&pending_employee_name=Тестов%20Тимур%20Иванович"
+            )
 
         self.assertEqual(200, index_response.status_code)
         self.assertIn('href="/admin"', index_response.text)
@@ -1742,11 +1780,13 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual(200, users_response.status_code)
         self.assertIn("Пользователи", users_response.text)
         self.assertIn("Открыть кабинет", users_response.text)
+        self.assertIn('maxlength="300"', users_response.text)
         self.assertIn('data-hamburger-menu="true"', users_response.text)
         self.assertEqual(200, requests_response.status_code)
         self.assertIn("Заявки", requests_response.text)
         self.assertIn('aria-label="Фильтры заявок"', requests_response.text)
         self.assertIn('id="request-search"', requests_response.text)
+        self.assertIn('maxlength="150"', requests_response.text)
         self.assertIn('id="request-status-filter"', requests_response.text)
         self.assertIn('id="request-date-filter"', requests_response.text)
         self.assertIn("Открыть кабинет", requests_response.text)
@@ -1759,9 +1799,13 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual(200, test_data_response.status_code)
         self.assertIn("Генерация тестовых данных", test_data_response.text)
         self.assertIn('maxlength="500"', test_data_response.text)
+        self.assertIn('maxlength="1000"', test_data_response.text)
         self.assertIn('data-date-picker="true"', test_data_response.text)
         self.assertIn('data-time-mask="true"', test_data_response.text)
         self.assertIn('data-hamburger-menu="true"', test_data_response.text)
+        self.assertEqual(200, employee_login_response.status_code)
+        self.assertIn('maxlength="150"', employee_login_response.text)
+        self.assertIn('maxlength="128"', employee_login_response.text)
 
     def test_date_picker_keeps_popover_open_on_internal_clicks(self) -> None:
         shared_component = (web_ui.TEMPLATES_DIR / "includes" / "date_time_controls.js").read_text(encoding="utf-8")
@@ -1934,6 +1978,21 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                     "Задача не может быть длиннее 500 символов",
                 ),
                 ("justification_empty", {"justification": ""}, "Укажите обоснование"),
+                (
+                    "justification_too_long",
+                    {"justification": "А" * 501},
+                    "Обоснование не может быть длиннее 500 символов",
+                ),
+                (
+                    "system_name_too_long",
+                    {"systems": "А" * 151},
+                    "Название одной АС не может быть длиннее 150 символов",
+                ),
+                (
+                    "systems_too_many",
+                    {"systems": " | ".join(f"Система {index}" for index in range(7))},
+                    "Можно указать не более 6 АС",
+                ),
             ]
 
             for case_name, overrides, expected_message in cases:
@@ -2027,13 +2086,28 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 "Некорректный тип компенсации. Допустимые значения: Отгул, Двойная оплата",
             ),
             ("task_empty", {"task_description": ""}, "Укажите задачу"),
-            (
-                "task_too_long",
-                {"task_description": "А" * 501},
-                "Задача не может быть длиннее 500 символов",
-            ),
-            ("justification_empty", {"justification": ""}, "Укажите обоснование"),
-            ("systems_empty", {"systems": "   "}, "Укажите хотя бы одну систему"),
+                (
+                    "task_too_long",
+                    {"task_description": "А" * 501},
+                    "Задача не может быть длиннее 500 символов",
+                ),
+                ("justification_empty", {"justification": ""}, "Укажите обоснование"),
+                (
+                    "justification_too_long",
+                    {"justification": "А" * 501},
+                    "Обоснование не может быть длиннее 500 символов",
+                ),
+                ("systems_empty", {"systems": "   "}, "Укажите хотя бы одну систему"),
+                (
+                    "system_name_too_long",
+                    {"systems": "А" * 151},
+                    "Название одной АС не может быть длиннее 150 символов",
+                ),
+                (
+                    "systems_too_many",
+                    {"systems": " | ".join(f"Система {index}" for index in range(7))},
+                    "Можно указать не более 6 АС",
+                ),
         ]
 
         with patch.object(web_ui, "DB_PATH", self.db_path):
@@ -2120,6 +2194,57 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 },
                 lock_columns,
             )
+
+    def test_admin_text_field_limits_are_enforced_server_side(self) -> None:
+        insert_planned_request(
+            self.db_path,
+            response_id=926,
+            full_name="Лимитов Лев Иванович",
+            full_name_key="лимитов лев иванович",
+            planned_date=future_date_iso(30),
+        )
+        week_start = future_week_start(60)
+        week_end = week_start + web_ui.timedelta(days=6)
+
+        with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
+            client = TestClient(web_ui.app)
+            self.assertEqual(303, login_superuser(client).status_code)
+            status_response = client.post(
+                "/admin/employee/status",
+                data={
+                    "employee_key": "лимитов лев иванович",
+                    "employee_status": "blocked",
+                    "status_reason": "А" * 301,
+                },
+                follow_redirects=False,
+            )
+            lock_response = client.post(
+                "/admin/locks/create",
+                data={
+                    "lock_type": "planning",
+                    "date_from": week_start.isoformat(),
+                    "date_to": week_end.isoformat(),
+                    "comment": "А" * 501,
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(303, status_response.status_code)
+        self.assertIn("причина статуса не может быть длиннее 300 символов", unquote(status_response.headers["location"]).lower())
+        self.assertEqual(303, lock_response.status_code)
+        self.assertIn("комментарий не может быть длиннее 500 символов", unquote(lock_response.headers["location"]).lower())
+        self.assertEqual(
+            "А" * 150,
+            web_ui.normalize_admin_request_filters("А" * 151, "", "")[0],
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            status_row = conn.execute(
+                "SELECT employee_status FROM app_employee_profile WHERE full_name_key = ?",
+                ("лимитов лев иванович",),
+            ).fetchone()
+            locks_count = conn.execute("SELECT COUNT(*) FROM app_period_lock").fetchone()[0]
+        self.assertIsNone(status_row)
+        self.assertEqual(0, locks_count)
 
     def test_legacy_admin_login_route_is_removed(self) -> None:
         with patch.object(web_ui, "DB_PATH", self.db_path):
@@ -2516,6 +2641,11 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         with patch.dict("os.environ", SUPERUSER_ENV), patch.object(web_ui, "DB_PATH", self.db_path):
             client = TestClient(web_ui.app)
             self.assertEqual(303, login_superuser(client).status_code)
+            oversized_answer = client.post(
+                "/admin/request/delete",
+                data={**payload, "challenge_answer": "1000"},
+                follow_redirects=False,
+            )
             wrong_answer = client.post(
                 "/admin/request/delete",
                 data={**payload, "challenge_answer": "8"},
@@ -2523,6 +2653,8 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             )
             deleted = client.post("/admin/request/delete", data=payload, follow_redirects=False)
 
+        self.assertEqual(303, oversized_answer.status_code)
+        self.assertIn("некорректный ответ", unquote(oversized_answer.headers["location"]).lower())
         self.assertEqual(303, wrong_answer.status_code)
         self.assertIn("неверный ответ", unquote(wrong_answer.headers["location"]).lower())
         self.assertEqual(303, deleted.status_code)

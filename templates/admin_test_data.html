@@ -102,13 +102,14 @@
 
       <div class="field">
         <label for="test-justification">Обоснование</label>
-        <input id="test-justification" type="text" name="justification" value="{{ default_justification }}" required />
+        <input id="test-justification" type="text" name="justification" value="{{ default_justification }}" maxlength="{{ justification_max_length }}" required />
+        <div class="hint">Не более {{ justification_max_length }} символов.</div>
       </div>
 
       <div class="field">
         <label for="test-systems">АС</label>
-        <textarea id="test-systems" name="systems" required>{{ default_systems }}</textarea>
-        <div class="hint">АС можно разделять символом | или переносом строки.</div>
+        <textarea id="test-systems" name="systems" maxlength="{{ systems_total_max_length }}" required>{{ default_systems }}</textarea>
+        <div class="hint">До {{ systems_max_count }} АС, не более {{ system_name_max_length }} символов каждая. АС можно разделять символом | или переносом строки.</div>
       </div>
     </div>
 

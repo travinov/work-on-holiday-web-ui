@@ -93,7 +93,7 @@
     <div class="filters" aria-label="Фильтры заявок">
       <div class="filter-field">
         <label for="request-search">Сотрудник</label>
-        <input id="request-search" type="search" value="{{ filter_name }}" placeholder="Поиск по ФИО" autocomplete="off" />
+        <input id="request-search" type="search" value="{{ filter_name }}" placeholder="Поиск по ФИО" autocomplete="off" maxlength="{{ admin_filter_name_max_length }}" />
       </div>
       <div class="filter-field">
         <label for="request-status-filter">Статус</label>
@@ -209,7 +209,7 @@
       <input type="hidden" name="filter_date" value="{{ filter_date }}" data-request-filter-date />
       <div class="delete-challenge">
         <label for="delete-challenge-answer">Для подтверждения решите пример: <span id="delete-challenge-text"></span></label>
-        <input id="delete-challenge-answer" name="challenge_answer" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]+" required />
+        <input id="delete-challenge-answer" name="challenge_answer" type="text" inputmode="numeric" autocomplete="off" maxlength="{{ delete_challenge_answer_max_length }}" pattern="[0-9]+" required />
         <div class="delete-challenge-error" id="delete-challenge-error" aria-live="polite"></div>
       </div>
       <div class="delete-dialog-actions">
