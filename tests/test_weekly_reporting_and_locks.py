@@ -610,6 +610,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
 
     def test_new_employee_login_accepts_cyrillic_yo_and_hyphen_and_rejects_invalid_names_but_legacy_login_still_works(self) -> None:
         valid_name = "Ёлкин Иван-Петрович Сергеевич"
+        valid_name_without_patronymic = "Беспатронимный Иван-Петрович"
         legacy_name = "Легаси Имя-Ёжевич"
         legacy_token = "legacy-token-1"
         insert_legacy_employee(self.db_path, full_name=legacy_name, token=legacy_token)
@@ -620,6 +621,16 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             invalid_two_parts = client.post(
                 "/employee/login",
                 data={"full_name": "Иванов Иван"},
+                follow_redirects=False,
+            )
+            valid_two_parts = client.post(
+                "/employee/login",
+                data={"full_name": valid_name_without_patronymic, "no_patronymic": "1"},
+                follow_redirects=False,
+            )
+            invalid_three_parts_with_flag = client.post(
+                "/employee/login",
+                data={"full_name": "Иванов Иван Иванович", "no_patronymic": "1"},
                 follow_redirects=False,
             )
             invalid_latin = client.post(
@@ -645,11 +656,28 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
 
         self.assertEqual(200, valid_login.status_code)
         self.assertIn("Токен сотрудника создан", valid_login.text)
+        self.assertEqual(200, valid_two_parts.status_code)
+        self.assertIn("Токен сотрудника создан", valid_two_parts.text)
+        self.assertIn(valid_name_without_patronymic, valid_two_parts.text)
         for response in (invalid_two_parts, invalid_latin, invalid_digits, invalid_long_part):
             self.assertEqual(303, response.status_code)
             self.assertIn("новой регистрации", unquote(response.headers["location"]).lower())
+        self.assertEqual(303, invalid_three_parts_with_flag.status_code)
+        self.assertIn("фамилия имя кириллицей", unquote(invalid_three_parts_with_flag.headers["location"]).lower())
         self.assertEqual(303, invalid_long_name.status_code)
         self.assertIn("фио не может быть длиннее 150 символов", unquote(invalid_long_name.headers["location"]).lower())
+
+        with sqlite3.connect(self.db_path) as conn:
+            registered_without_patronymic = conn.execute(
+                "SELECT full_name FROM app_employee_directory WHERE full_name_key = ?",
+                ("беспатронимный иван-петрович",),
+            ).fetchone()
+            rejected_three_part = conn.execute(
+                "SELECT 1 FROM app_employee_directory WHERE full_name_key = ?",
+                ("иванов иван иванович",),
+            ).fetchone()
+        self.assertEqual((valid_name_without_patronymic,), registered_without_patronymic)
+        self.assertIsNone(rejected_three_part)
 
         with patch.object(web_ui, "DB_PATH", self.db_path):
             legacy_client = TestClient(web_ui.app)
@@ -1759,6 +1787,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             users_response = client.get("/admin/users")
             requests_response = client.get("/admin/requests")
             test_data_response = client.get("/admin/test-data")
+            employee_registration_response = client.get("/employee")
             employee_login_response = client.get(
                 "/employee?pending_employee_key=тестов&pending_employee_name=Тестов%20Тимур%20Иванович"
             )
@@ -1806,6 +1835,10 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual(200, employee_login_response.status_code)
         self.assertIn('maxlength="150"', employee_login_response.text)
         self.assertIn('maxlength="128"', employee_login_response.text)
+        self.assertEqual(200, employee_registration_response.status_code)
+        self.assertIn('id="employee-no-patronymic"', employee_registration_response.text)
+        self.assertIn('name="no_patronymic"', employee_registration_response.text)
+        self.assertIn("Нет отчества", employee_registration_response.text)
 
     def test_date_picker_keeps_popover_open_on_internal_clicks(self) -> None:
         shared_component = (web_ui.TEMPLATES_DIR / "includes" / "date_time_controls.js").read_text(encoding="utf-8")

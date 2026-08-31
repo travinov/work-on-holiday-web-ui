@@ -251,11 +251,12 @@ def lunch_warning_for_time(value: str | None) -> str:
         return ""
 
 
-def validate_new_employee_full_name(value: str) -> bool:
+def validate_new_employee_full_name(value: str, *, no_patronymic: bool = False) -> bool:
     parts = " ".join((value or "").strip().split()).split(" ")
+    expected_parts_count = 2 if no_patronymic else 3
     return (
         len(" ".join(parts)) <= FULL_NAME_MAX_LENGTH
-        and len(parts) == 3
+        and len(parts) == expected_parts_count
         and all(
             len(part) <= FULL_NAME_PART_MAX_LENGTH and CYRILLIC_NAME_PART_PATTERN.fullmatch(part)
             for part in parts
@@ -2060,11 +2061,13 @@ def employee_login(
     access_token: str = Form(""),
     employee_key: str = Form(""),
     grade_12_plus: str = Form("0"),
+    no_patronymic: str = Form("0"),
 ):
     full_name = full_name.strip()
     access_token = access_token.strip()
     employee_key = employee_key.strip()
     grade_12_plus_flag = grade_12_plus == "1"
+    no_patronymic_flag = no_patronymic == "1"
 
     if not full_name:
         return redirect_with_message("/employee", "Укажите ФИО", "error")
@@ -2085,11 +2088,12 @@ def employee_login(
         ensure_app_tables(conn)
         employee = resolve_employee_by_name(conn, full_name)
         if not employee:
-            if not validate_new_employee_full_name(full_name):
+            if not validate_new_employee_full_name(full_name, no_patronymic=no_patronymic_flag):
+                expected_name_format = "Фамилия Имя" if no_patronymic_flag else "Фамилия Имя Отчество"
                 return redirect_with_message(
                     "/employee",
                     (
-                        "Для новой регистрации укажите ровно три части ФИО кириллицей; "
+                        f"Для новой регистрации укажите {expected_name_format} кириллицей; "
                         f"не более {FULL_NAME_PART_MAX_LENGTH} символов в каждой части и "
                         f"{FULL_NAME_MAX_LENGTH} символов во всем ФИО; буква Ё и дефис разрешены"
                     ),

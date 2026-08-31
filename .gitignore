@@ -5,6 +5,7 @@
 # Python
 venv/
 __pycache__/
+.pytest_cache/
 *.pyc
 *.pyo
 *.pyd
@@ -14,6 +15,7 @@ reports/
 survey_results.db
 generated_exports/
 restore_points/
+dist/
 ~$*.xlsx
 
 # Potentially sensitive source exports

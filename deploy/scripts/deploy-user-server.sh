@@ -10,10 +10,11 @@ It uses user-writable paths, a detached screen session, and a crontab watchdog.
 
 Defaults:
   APP_DIR=current project root
-  DB_PATH=$HOME/.local/share/work-on-holiday/survey_results.db
-  BACKUP_DIR=$HOME/.local/state/work-on-holiday/backups
-  ENV_FILE=$HOME/.config/work-on-holiday/work-on-holiday.env
-  SCREEN_NAME=work-on-holiday
+  INSTANCE_NAME=work-on-holiday
+  DB_PATH=$HOME/.local/share/$INSTANCE_NAME/survey_results.db
+  BACKUP_DIR=$HOME/.local/state/$INSTANCE_NAME/backups
+  ENV_FILE=$HOME/.config/$INSTANCE_NAME/$INSTANCE_NAME.env
+  SCREEN_NAME=$INSTANCE_NAME
   PORT=8081
 
 Required on first deploy:
@@ -33,19 +34,20 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 
+INSTANCE_NAME="${INSTANCE_NAME:-work-on-holiday}"
 APP_DIR="${APP_DIR:-$PROJECT_ROOT}"
-DB_PATH="${DB_PATH:-$HOME/.local/share/work-on-holiday/survey_results.db}"
-BACKUP_DIR="${BACKUP_DIR:-$HOME/.local/state/work-on-holiday/backups}"
-ENV_DIR="${ENV_DIR:-$HOME/.config/work-on-holiday}"
-ENV_FILE="${ENV_FILE:-$ENV_DIR/work-on-holiday.env}"
-SERVICE_NAME="${SERVICE_NAME:-work-on-holiday}"
+DB_PATH="${DB_PATH:-$HOME/.local/share/$INSTANCE_NAME/survey_results.db}"
+BACKUP_DIR="${BACKUP_DIR:-$HOME/.local/state/$INSTANCE_NAME/backups}"
+ENV_DIR="${ENV_DIR:-$HOME/.config/$INSTANCE_NAME}"
+ENV_FILE="${ENV_FILE:-$ENV_DIR/$INSTANCE_NAME.env}"
+SERVICE_NAME="${SERVICE_NAME:-$INSTANCE_NAME}"
 SCREEN_NAME="${SCREEN_NAME:-$SERVICE_NAME}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8081}"
 SUPERUSER_LOGIN="${WORK_ON_HOLIDAY_SUPERUSER_LOGIN:-root}"
 SECURE_COOKIES="${WORK_ON_HOLIDAY_SECURE_COOKIES:-0}"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
-STATE_DIR="${STATE_DIR:-$HOME/.local/state/work-on-holiday}"
+STATE_DIR="${STATE_DIR:-$HOME/.local/state/$INSTANCE_NAME}"
 LOG_DIR="${LOG_DIR:-$STATE_DIR/logs}"
 START_SCRIPT="${START_SCRIPT:-$BIN_DIR/$SERVICE_NAME-start.sh}"
 WATCHDOG_SCRIPT="${WATCHDOG_SCRIPT:-$BIN_DIR/$SERVICE_NAME-watchdog.sh}"
@@ -73,8 +75,29 @@ ensure_env_key() {
   fi
 }
 
+resolve_user_path() {
+  case "$1" in
+    /*)
+      printf '%s\n' "$1"
+      ;;
+    *)
+      printf '%s/%s\n' "$HOME" "${1#./}"
+      ;;
+  esac
+}
+
+DB_PATH="$(resolve_user_path "$DB_PATH")"
+BACKUP_DIR="$(resolve_user_path "$BACKUP_DIR")"
+ENV_DIR="$(resolve_user_path "$ENV_DIR")"
+ENV_FILE="$(resolve_user_path "$ENV_FILE")"
+BIN_DIR="$(resolve_user_path "$BIN_DIR")"
+STATE_DIR="$(resolve_user_path "$STATE_DIR")"
+LOG_DIR="$(resolve_user_path "$LOG_DIR")"
+START_SCRIPT="$(resolve_user_path "$START_SCRIPT")"
+WATCHDOG_SCRIPT="$(resolve_user_path "$WATCHDOG_SCRIPT")"
+LOG_FILE="$(resolve_user_path "$LOG_FILE")"
 APP_DIR="$(cd "$APP_DIR" && pwd -P)"
-mkdir -p "$(dirname "$DB_PATH")" "$BACKUP_DIR" "$ENV_DIR" "$BIN_DIR" "$LOG_DIR"
+mkdir -p "$(dirname "$DB_PATH")" "$BACKUP_DIR" "$ENV_DIR" "$(dirname "$ENV_FILE")" "$BIN_DIR" "$LOG_DIR"
 
 require_cmd screen
 require_cmd crontab

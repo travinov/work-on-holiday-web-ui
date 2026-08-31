@@ -199,6 +199,16 @@
           </div>
         {% else %}
           <div class="row" style="margin-top:10px;">
+            <input type="hidden" name="no_patronymic" value="0" />
+            <label class="check-row" for="employee-no-patronymic">
+              <input id="employee-no-patronymic" type="checkbox" name="no_patronymic" value="1" />
+              <strong>Нет отчества</strong>
+            </label>
+            <span class="tooltip" tabindex="0">?
+              <span class="tooltip-text">Установите флаг, только если отчества нет. Тогда при регистрации укажите фамилию и имя.</span>
+            </span>
+          </div>
+          <div class="row" style="margin-top:10px;">
             <input type="hidden" name="grade_12_plus" value="0" />
             <label class="check-row" for="employee-grade-12-plus">
               <input id="employee-grade-12-plus" type="checkbox" name="grade_12_plus" value="1" />
