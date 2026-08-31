@@ -610,7 +610,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
 
     def test_new_employee_login_accepts_cyrillic_yo_and_hyphen_and_rejects_invalid_names_but_legacy_login_still_works(self) -> None:
         valid_name = "Ёлкин Иван-Петрович Сергеевич"
-        valid_name_without_patronymic = "Беспатронимный Иван-Петрович"
+        valid_name_without_patronymic = "Ёлкин-Семёнов Иван"
         legacy_name = "Легаси Имя-Ёжевич"
         legacy_token = "legacy-token-1"
         insert_legacy_employee(self.db_path, full_name=legacy_name, token=legacy_token)
@@ -670,7 +670,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         with sqlite3.connect(self.db_path) as conn:
             registered_without_patronymic = conn.execute(
                 "SELECT full_name FROM app_employee_directory WHERE full_name_key = ?",
-                ("беспатронимный иван-петрович",),
+                (web_ui.normalize_name_key(valid_name_without_patronymic),),
             ).fetchone()
             rejected_three_part = conn.execute(
                 "SELECT 1 FROM app_employee_directory WHERE full_name_key = ?",
