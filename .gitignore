@@ -18,3 +18,7 @@ restore_points/
 
 # Potentially sensitive source exports
 Копия*.xlsx
+
+# Local browser verification artifacts
+.playwright-cli/
+output/playwright/

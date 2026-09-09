@@ -49,6 +49,7 @@
     <div class="msg {{ level }}">{{ msg }}</div>
   {% endif %}
 
+  <div class="card"><a href="/admin/roster">Импорт реестра сотрудников и руководителей →</a></div>
   <div class="card">
     <table>
       <thead>
@@ -66,7 +67,7 @@
       <tbody>
         {% for user in users %}
           <tr>
-            <td>{{ user.full_name }}</td>
+            <td>{{ user.full_name }}<br>{{ user.work_email or "Почта не указана" }}{% if user.is_manager %}<br><span class="badge">Руководитель</span>{% endif %}{% if user.manager_name %}<br>Руководитель: {{ user.manager_name }}{% endif %}</td>
             <td>{{ user.requests_count }}</td>
             <td>
               <form action="/admin/employee/status" method="post" class="row">

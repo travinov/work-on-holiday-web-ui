@@ -120,11 +120,13 @@
   </style>
 </head>
 <body>
+  {% if employee_session and employee_session.is_manager %}<div class="card"><a href="/manager">Задачи команды →</a></div>{% endif %}
   <div class="topbar">
     <h1 style="margin: 0;">Кабинет сотрудника</h1>
     <details class="hamburger-menu" data-hamburger-menu="true">
       <summary aria-label="Открыть меню">☰</summary>
       <nav class="hamburger-panel">
+        {% if employee_session and employee_session.is_manager %}<a class="hamburger-link" href="/manager">Задачи команды</a>{% endif %}
         <a class="hamburger-link" href="/">Главная</a>
         {% if is_admin %}
           <a class="hamburger-link" href="/admin">Кабинет администратора</a>
@@ -169,17 +171,17 @@
   {% elif not employee_session %}
     <div class="card">
       <h3 style="margin-top:0;">Вход сотрудника</h3>
-      <p class="meta">Укажите ФИО полностью. Если пользователь еще не зарегистрирован, система создаст кабинет и покажет токен один раз. Если токен уже существует, система попросит его ввести.</p>
+      <p class="meta">Введите ФИО или рабочую почту из реестра. При совпадении ФИО используйте почту. Для первого входа после импорта получите токен у администратора. Для самостоятельной регистрации нового сотрудника укажите полное ФИО.</p>
       <form action="/employee/login" method="post">
         <div class="row">
-          <label><strong>ФИО</strong></label>
+          <label><strong>ФИО или рабочая почта</strong></label>
           <span class="tooltip" tabindex="0">?
-            <span class="tooltip-text">Укажите полное ФИО без сокращений. По этому полю система найдет существующий кабинет или зарегистрирует новый.</span>
+            <span class="tooltip-text">Рабочая почта однозначно определяет сотрудника из реестра.</span>
           </span>
           <input
             type="text"
             name="full_name"
-            placeholder="Фамилия Имя Отчество"
+            placeholder="ФИО или рабочая почта"
             style="min-width: 320px;"
             value="{{ pending_employee_name or '' }}"
             required
