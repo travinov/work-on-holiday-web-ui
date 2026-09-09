@@ -22,13 +22,22 @@
 </dialog>
 <dialog id="apply-filter-dialog" aria-labelledby="apply-filter-title">
   <h2 id="apply-filter-title">Применить фильтр</h2>
-  {% if saved %}<p class="muted">Выберите личный сохранённый фильтр.</p><div class="saved-filter-list">
-  {% for name in saved %}<div class="saved-filter-row"><strong>{{ name }}</strong><div class="row">
-    <form action="/manager" method="get"><input type="hidden" name="saved" value="{{ name }}"><button aria-label="Применить фильтр {{ name }}">Применить</button></form>
-    <form action="/manager/filters/delete" method="post"><input type="hidden" name="name" value="{{ name }}"><button class="secondary" aria-label="Удалить фильтр {{ name }}">Удалить</button></form>
-  </div></div>{% endfor %}</div>
-  {% else %}<p class="muted">Сохранённых фильтров пока нет. Настройте условия и нажмите «Сохранить фильтр».</p>{% endif %}
-  <button type="button" class="secondary" data-close-dialog autofocus>Закрыть</button>
+  {% if saved %}<p class="muted" id="saved-filter-hint">Выберите фильтр из списка.</p>
+  <form action="/manager" method="get" id="apply-saved-filter-form"></form>
+  <div class="saved-filter-list" role="radiogroup" aria-labelledby="saved-filter-hint">
+    {% for name in saved %}<div class="saved-filter-row">
+      <label class="saved-filter-choice">
+        <input type="radio" name="saved" value="{{ name }}" form="apply-saved-filter-form" required>
+        <span>{{ name }}</span>
+        <svg class="selection-check" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
+      </label>
+      <form action="/manager/filters/delete" method="post"><input type="hidden" name="name" value="{{ name }}"><button class="delete-filter" aria-label="Удалить фильтр {{ name }}" title="Удалить фильтр">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg>
+      </button></form>
+    </div>{% endfor %}
+  </div>
+  <div class="dialog-actions"><button type="button" class="secondary" data-close-dialog>Отмена</button><button form="apply-saved-filter-form" id="apply-selected-filter" disabled>Применить</button></div>
+  {% else %}<p class="muted">Сохранённых фильтров пока нет. Настройте условия и нажмите «Сохранить фильтр».</p><button type="button" class="secondary" data-close-dialog autofocus>Закрыть</button>{% endif %}
 </dialog>
 <section><h2>Задачи за {{ date_from }} — {{ date_to }} · {{ tasks|length }}</h2><div class="table-wrap"><table><thead><tr><th>Сотрудник</th><th>Дата и время</th><th>Задача</th><th>Статус</th></tr></thead><tbody>
 {% set group = namespace(name='') %}{% for task in tasks %}{% if filters.scope == 'all' and group.name != task.manager_name %}{% set group.name = task.manager_name %}<tr><th colspan="4">Руководитель: {{ group.name }}</th></tr>{% endif %}<tr><td>{{ task.full_name }}</td><td>{{ task.planned_work_date_ru }}<br>{{ task.planned_work_time }}</td><td><a href="/manager/requests/{{ task.response_id }}">{{ task.task_description or 'Без описания' }}</a></td><td>{{ task.status_label }}</td></tr>{% else %}<tr><td colspan="4">Задач по выбранным фильтрам нет.</td></tr>{% endfor %}</tbody></table></div></section>
@@ -53,5 +62,8 @@ document.getElementById('save-filter-form').addEventListener('submit', event => 
   if (!name.reportValidity()) event.preventDefault();
 });
 document.getElementById('open-apply-filter').addEventListener('click', () => document.getElementById('apply-filter-dialog').showModal());
+document.querySelectorAll('.saved-filter-choice input').forEach(input => input.addEventListener('change', () => {
+  document.getElementById('apply-selected-filter').disabled = false;
+}));
 document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
 </script>{% endblock %}
