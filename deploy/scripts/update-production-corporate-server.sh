@@ -6,8 +6,9 @@ usage() {
 Update the isolated Work on Holiday Production instance.
 
 Run this script on the local corporate workstation from the extracted project
-folder. It creates a Production DB dump before updating application files and
-does not change the current instance on port 8081.
+folder. It creates a Production DB dump and verifies a restore point with the
+previous code, venv and configuration before updating application files. It
+does not change the current instance on port 8081. Restoring is manual.
 
 Production defaults:
   DEPLOY_PATH=apps/work-on-holiday-production

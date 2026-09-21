@@ -6,8 +6,9 @@ usage() {
 Update Work on Holiday from the local extracted ZIP folder to the corporate server.
 
 Run this script on the local corporate workstation from the project root.
-It creates a SQL dump of the existing remote SQLite DB before syncing the new
-project version and applying DB schema updates.
+Before syncing files it creates and verifies a restore point: previous code and
+venv, SQLite snapshot and SQL dump, environment file, startup scripts and cron
+reference. Backup failure stops the update. Restoring remains a manual action.
 
 Defaults:
   DEPLOY_HOST=tsles-assai0001.esrt.sber.ru
@@ -86,62 +87,25 @@ log "Remote project path: ~/$DEPLOY_PATH"
 log "Remote SQLite DB file: ~/$REMOTE_DB_PATH"
 log "Remote backup dir: ~/$REMOTE_BACKUP_DIR"
 
-log "Creating SQL dump of current remote SQLite DB before update"
-remote_dump_script=$(cat <<'REMOTE_DUMP'
-set -euo pipefail
-: "${REMOTE_DB_PATH:?REMOTE_DB_PATH is required}"
-: "${REMOTE_BACKUP_DIR:?REMOTE_BACKUP_DIR is required}"
-
-db_path="$HOME/$REMOTE_DB_PATH"
-backup_dir="$HOME/$REMOTE_BACKUP_DIR"
-
-if [ ! -f "$db_path" ]; then
-  echo "Remote SQLite DB file not found: $db_path. Use install-to-corporate-server.sh for first install." >&2
-  exit 10
-fi
-
-mkdir -p "$backup_dir"
-timestamp="$(date +%Y%m%d-%H%M%S)"
-dump_path="$backup_dir/survey_results-pre-update-$timestamp.sql"
-
-python3 - "$db_path" "$dump_path" <<'PY'
-from pathlib import Path
-import sqlite3
-import sys
-
-db_path = Path(sys.argv[1])
-dump_path = Path(sys.argv[2])
-tmp_backup_path = dump_path.with_suffix(".snapshot.db")
-
-source = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-try:
-    target = sqlite3.connect(tmp_backup_path)
-    try:
-        source.backup(target)
-    finally:
-        target.close()
-finally:
-    source.close()
-
-snapshot = sqlite3.connect(tmp_backup_path)
-try:
-    with dump_path.open("w", encoding="utf-8") as dump_file:
-        dump_file.write("PRAGMA foreign_keys=OFF;\n")
-        dump_file.write("BEGIN TRANSACTION;\n")
-        for line in snapshot.iterdump():
-            if line not in {"BEGIN TRANSACTION;", "COMMIT;"}:
-                dump_file.write(f"{line}\n")
-        dump_file.write("COMMIT;\n")
-finally:
-    snapshot.close()
-    tmp_backup_path.unlink(missing_ok=True)
-
-print(dump_path)
-PY
-REMOTE_DUMP
+log "Saving and verifying the previous version before update"
+RESTORE_ARGS=(
+  --app-dir "$DEPLOY_PATH"
+  --db-path "$REMOTE_DB_PATH"
+  --backup-dir "$REMOTE_BACKUP_DIR"
+  --env-file "$REMOTE_ENV_FILE"
+  --state-dir "$REMOTE_STATE_DIR"
+  --instance "$REMOTE_INSTANCE_NAME"
+  --service "$REMOTE_SERVICE_NAME"
+  --host "$REMOTE_HOST"
+  --port "$REMOTE_PORT"
 )
-"${SSH_BASE[@]}" "$SSH_TARGET" \
-  "REMOTE_DB_PATH=$(shell_quote "$REMOTE_DB_PATH") REMOTE_BACKUP_DIR=$(shell_quote "$REMOTE_BACKUP_DIR") bash -s" <<< "$remote_dump_script"
+RESTORE_COMMAND="python3 -"
+for argument in "${RESTORE_ARGS[@]}"; do
+  RESTORE_COMMAND+=" $(shell_quote "$argument")"
+done
+# Stream the new helper before rsync: even the first update from an older
+# installation saves the OLD files, without requiring the helper on the server.
+"${SSH_BASE[@]}" "$SSH_TARGET" "$RESTORE_COMMAND" < "$SCRIPT_DIR/create-restore-point.py"
 
 log "Creating remote project directory"
 "${SSH_BASE[@]}" "$SSH_TARGET" "mkdir -p $(shell_quote "$DEPLOY_PATH")"

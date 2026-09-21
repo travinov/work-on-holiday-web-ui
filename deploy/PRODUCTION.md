@@ -41,9 +41,12 @@ deploy/scripts/install-production-to-corporate-server.sh
 deploy/scripts/update-production-corporate-server.sh
 ```
 
-Перед обновлением создается SQL-dump Production-БД в
-`~/.local/state/work-on-holiday-production/backups`. Данные текущего экземпляра
-не затрагиваются.
+Перед обновлением создаётся и проверяется комплект для ручного отката в
+`~/.local/state/work-on-holiday-production/backups/restore-points/pre-update-<дата-время-UTC>-<идентификатор>/`.
+Он содержит прежний код с `venv`, копию Production-БД и SQL-dump, настройки,
+скрипты запуска и справочную копию crontab. Ошибка копирования или проверки
+останавливает обновление до замены файлов. Данные текущего экземпляра на 8081
+не затрагиваются. Откат не выполняется автоматически; см. [ручное восстановление](MANUAL_ROLLBACK.md).
 
 ## Проверка
 
