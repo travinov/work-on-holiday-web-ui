@@ -54,6 +54,8 @@
     .filter-field input, .filter-field select { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; font: inherit; }
     .filter-date { max-width: 180px; font-variant-numeric: tabular-nums; }
     .filter-result { margin: 0 0 10px; color: #64748b; font-size: 13px; }
+    .export-button { display: inline-block; padding: 10px 14px; border-radius: 8px; background: #111827; color: #fff; margin-bottom: 14px; }
+    .export-button:focus-visible { outline: 3px solid #60a5fa; outline-offset: 2px; }
     .msg { padding: 10px 12px; border-radius: 8px; margin: 12px 0 16px; }
     .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
     .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
@@ -112,6 +114,7 @@
       </div>
     </div>
     <p class="filter-result" id="request-filter-result" aria-live="polite"></p>
+    <a class="export-button" id="request-export" href="/admin/requests/export?{{ {'filter_name': filter_name, 'filter_status': filter_status, 'filter_date': filter_date}|urlencode }}">Выгрузить в Excel</a>
     <div class="table-wrap" role="region" aria-label="Таблица заявок" tabindex="0">
     <table>
       <thead>
@@ -225,6 +228,7 @@
     const requestRows = [...document.querySelectorAll("[data-request-row]")];
     const emptyRow = document.querySelector("[data-empty-row]");
     const filterResult = document.querySelector("#request-filter-result");
+    const requestExport = document.querySelector("#request-export");
     const statusForms = [...document.querySelectorAll(".status-form")];
     const deleteRequestDialog = document.querySelector("#delete-request-dialog");
     const deleteRequestForm = document.querySelector("#delete-request-form");
@@ -265,6 +269,7 @@
         else url.searchParams.delete(key);
       });
       window.history.replaceState(null, "", url);
+      requestExport.href = "/admin/requests/export?" + new URLSearchParams(values);
       filterAwareForms.forEach((form) => {
         form.querySelector("[data-request-filter-name]").value = values.filter_name;
         form.querySelector("[data-request-filter-status]").value = values.filter_status;
@@ -290,6 +295,7 @@
     }
 
     requestSearch.addEventListener("input", applyRequestFilters);
+    requestExport.addEventListener("click", syncRequestFilterState);
     requestStatusFilter.addEventListener("change", applyRequestFilters);
     requestDateFilter.addEventListener("input", () => {
       requestDateFilter.value = maskFilterDate(requestDateFilter.value);

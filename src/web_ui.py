@@ -21,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 try:
     from src.app_request_state import STATUS_LABELS, VALID_STATUSES, ensure_app_tables
     from src.db_schema import ensure_core_tables
+    from src.request_export import request_export_response
     from src.work_time import (
         LUNCH_WARNING,
         parse_work_time,
@@ -30,6 +31,7 @@ try:
 except ModuleNotFoundError:
     from app_request_state import STATUS_LABELS, VALID_STATUSES, ensure_app_tables
     from db_schema import ensure_core_tables
+    from request_export import request_export_response
     from work_time import (
         LUNCH_WARNING,
         parse_work_time,
@@ -351,6 +353,17 @@ def build_admin_requests_path(
         if value
     }
     return f"/admin/requests?{urlencode(params)}" if params else "/admin/requests"
+
+
+def filter_admin_requests(rows, filter_name="", filter_status="", filter_date=""):
+    """Match the live filters in admin_requests.html, including partial dates."""
+    name, status, day = normalize_admin_request_filters(filter_name, filter_status, filter_date)
+    digits = re.sub(r"\D", "", day)
+    day_iso = f"{digits[4:8]}-{digits[2:4]}-{digits[:2]}" if len(digits) == 8 else ""
+    return [item for item in rows
+            if (not name or name.lower() in (item["full_name"] or "").lower())
+            and (not status or item["status"] == status)
+            and (not day_iso or item["planned_work_date"] == day_iso)]
 
 
 def hash_employee_token(token: str) -> str:
@@ -1344,6 +1357,7 @@ def get_admin_requests_overview() -> list[dict[str, Any]]:
                 COALESCE(st.override_planned_work_time, r.planned_work_time) AS planned_work_time,
                 COALESCE(st.override_payment_type, r.payment_type) AS payment_type,
                 COALESCE(st.override_task_description, r.task_description) AS task_description,
+                COALESCE(st.override_justification, r.justification) AS justification,
                 COALESCE(st.status, 'active') AS request_status,
                 st.is_corrected,
                 st.returned_for_correction,
@@ -1352,7 +1366,7 @@ def get_admin_requests_overview() -> list[dict[str, Any]]:
                 lock.week_start,
                 lock.week_end,
                 lock.locked_at,
-                ps.systems
+                COALESCE(st.override_systems, ps.systems) AS systems
             FROM survey_responses r
             LEFT JOIN app_request_state st ON st.response_id = r.response_id
             LEFT JOIN app_report_lock lock ON lock.response_id = r.response_id
@@ -1839,6 +1853,26 @@ def admin_requests(
             "filter_status": normalized_status,
             "filter_date": normalized_date,
         },
+    )
+
+
+@app.get("/admin/requests/export")
+def export_admin_requests(
+    request: Request,
+    filter_name: str = "",
+    filter_status: str = "",
+    filter_date: str = "",
+):
+    if not get_admin_session(request):
+        raise HTTPException(403, "Требуются права администратора")
+    name, status, day = normalize_admin_request_filters(filter_name, filter_status, filter_date)
+    rows = filter_admin_requests(get_admin_requests_overview(), name, status, day)
+    return request_export_response(
+        rows,
+        filename="Заявки администратора.xlsx",
+        filters=[("Сотрудник", name or "Все сотрудники"),
+                 ("Статус", STATUS_LABELS.get(status, "Все статусы")),
+                 ("Плановая дата", day if len(day) == 10 else "Все даты")],
     )
 
 

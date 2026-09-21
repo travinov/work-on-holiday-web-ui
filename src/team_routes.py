@@ -11,8 +11,10 @@ from fastapi.responses import RedirectResponse, Response
 
 try:
     from src import team_directory as directory
+    from src.request_export import request_export_response
 except ModuleNotFoundError:
     import team_directory as directory
+    from request_export import request_export_response
 
 
 def register_routes(ui):
@@ -112,7 +114,7 @@ def register_routes(ui):
             conn.execute('DELETE FROM app_roster_draft WHERE id=?', (identifier,))
         return ui.redirect_with_message('/admin/users', f"Реестр применён: {len(plan['changes'])} сотрудников", 'success')
 
-    def read_filter(request, conn, owner):
+    def read_filter(request, conn, owner, *, remember=True):
         query = request.query_params
         if query.get('saved'):
             row = conn.execute('SELECT payload FROM app_team_filter WHERE owner_key=? AND name=?', (owner, query['saved'])).fetchone()
@@ -139,38 +141,65 @@ def register_routes(ui):
             raise HTTPException(422, 'Некорректные фильтры: ' + str(exc))
         # Stored keys never expand current access. Keep stale selections so a removed
         # selection does not silently turn into "all employees".
-        conn.execute('''INSERT INTO app_team_filter VALUES (?, '', ?) ON CONFLICT(owner_key,name)
-                        DO UPDATE SET payload=excluded.payload''', (owner, json.dumps(filters)))
+        if remember:
+            conn.execute('''INSERT INTO app_team_filter VALUES (?, '', ?) ON CONFLICT(owner_key,name)
+                            DO UPDATE SET payload=excluded.payload''', (owner, json.dumps(filters)))
         return filters
+
+    def manager_selection(conn, owner, filters):
+        # Both the page and the download recheck the current hierarchy.
+        allowed = directory.team_keys(conn, owner, filters['scope'])
+        people = directory.employees(conn)
+        start, end = directory.filter_dates(filters)
+        selected = set(filters['employees'])
+        team = sorted([people[k] for k in allowed if k in people], key=lambda p: p['name'])
+        visible = [p for p in team if (not selected or p['key'] in selected)
+                   and directory.name_key(filters['surname']) in directory.name_key(p['name'])]
+        tasks, without = [], []
+        for person in visible:
+            items = [r for r in ui.get_employee_requests(person['key']) if start <= r['planned_work_date_iso'] <= end]
+            if not items:
+                without.append(person)
+            for item in items:
+                if filters['text'].casefold() not in item['task_description'].casefold():
+                    continue
+                lead = people.get(person['manager'], {})
+                item['manager_name'] = lead.get('name', 'Без руководителя') + (' · ' + lead['email'] if lead.get('email') else '')
+                item['full_name'] = person['name']
+                tasks.append(item)
+        tasks.sort(key=lambda r: (r['manager_name'] if filters['scope'] == 'all' else '', r['full_name'], r['planned_work_date_iso']))
+        return dict(team=team, tasks=tasks, without=without, date_from=start, date_to=end, stale=bool(selected - allowed))
 
     @app.get('/manager')
     def manager_page(request: Request):
         with ui.get_db_connection() as conn:
             owner = manager(request, conn)
             filters = read_filter(request, conn, owner)
-            allowed = directory.team_keys(conn, owner, filters['scope'])
-            people = directory.employees(conn)
+            selection = manager_selection(conn, owner, filters)
             saved = [r[0] for r in conn.execute("SELECT name FROM app_team_filter WHERE owner_key=? AND name != '' ORDER BY name", (owner,))]
-            start, end = directory.filter_dates(filters)
-            selected = set(filters['employees'])
-            team = sorted([people[k] for k in allowed if k in people], key=lambda p: p['name'])
-            visible = [p for p in team if (not selected or p['key'] in selected)
-                       and directory.name_key(filters['surname']) in directory.name_key(p['name'])]
-            tasks, without = [], []
-            for person in visible:
-                items = [r for r in ui.get_employee_requests(person['key']) if start <= r['planned_work_date_iso'] <= end]
-                if not items:
-                    without.append(person)
-                for item in items:
-                    if filters['text'].casefold() not in item['task_description'].casefold():
-                        continue
-                    lead = people.get(person['manager'], {})
-                    item['manager_name'] = lead.get('name', 'Без руководителя') + (' · ' + lead['email'] if lead.get('email') else '')
-                    item['full_name'] = person['name']
-                    tasks.append(item)
-            tasks.sort(key=lambda r: (r['manager_name'] if filters['scope'] == 'all' else '', r['full_name'], r['planned_work_date_iso']))
-        return render(request, 'manager.html', filters=filters, team=team, tasks=tasks, without=without,
-                      date_from=start, date_to=end, saved=saved, stale=bool(selected - allowed))
+        # Capture applied filters and concrete dates, independent of other tabs,
+        # saved-filter edits, draft form changes or a calendar week rollover.
+        export_query = dict(filters, apply='1', period='range',
+                            date_from=selection['date_from'], date_to=selection['date_to'])
+        export_url = '/manager/requests/export?' + urlencode(export_query, doseq=True)
+        return render(request, 'manager.html', filters=filters, saved=saved, export_url=export_url, **selection)
+
+    @app.get('/manager/requests/export')
+    def export_manager_requests(request: Request):
+        with ui.get_db_connection() as conn:
+            owner = manager(request, conn)
+            filters = read_filter(request, conn, owner, remember=False)
+            selection = manager_selection(conn, owner, filters)
+        selected = set(filters['employees'])
+        employees = '; '.join(p['name'] for p in selection['team'] if p['key'] in selected)
+        return request_export_response(
+            selection['tasks'], filename="Заявки команды.xlsx", include_manager=True,
+            filters=[("Период", f"{selection['date_from']} — {selection['date_to']}"),
+                     ("Охват", "Все уровни подчинения" if filters['scope'] == 'all' else "Прямые подчинённые"),
+                     ("Сотрудники", employees or ("Выбор вне доступной команды" if selected else "Вся доступная команда")),
+                     ("Поиск по ФИО", filters['surname'] or "Без ограничения"),
+                     ("Текст задачи", filters['text'] or "Без ограничения")],
+        )
 
     @app.post('/manager/filters')
     async def save_filter(request: Request):

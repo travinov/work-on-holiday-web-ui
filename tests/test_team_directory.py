@@ -4,12 +4,14 @@ import re
 import sqlite3
 import tempfile
 import unittest
+from html import unescape
 from datetime import date
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi.testclient import TestClient
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from src import web_ui as ui, team_directory as d
 from src.app_request_state import ensure_app_tables
 from src.db_schema import ensure_core_tables
@@ -57,6 +59,158 @@ class TeamTests(unittest.TestCase):
             conn.execute('''INSERT INTO survey_responses(response_id,full_name_key,full_name,request_type,
                 planned_work_date,planned_work_time,task_description) VALUES (?,?,?,'Подать заявку',?,'10:00 - 12:00',?)''',
                 (identifier, key, ui.get_employee_display_name(conn, key), day, text))
+
+    def exported_rows(self, response):
+        self.assertEqual(response.status_code, 200, response.text if response.status_code != 200 else '')
+        self.assertIn('spreadsheetml.sheet', response.headers['content-type'])
+        self.assertEqual(response.headers['cache-control'], 'private, no-store')
+        self.assertIn('attachment;', response.headers['content-disposition'])
+        book = load_workbook(io.BytesIO(response.content))
+        self.addCleanup(book.close)
+        values = list(book['Заявки'].values)
+        return book, [dict(zip(values[0], row)) for row in values[1:]]
+
+    def export_link(self, page):
+        self.assertEqual(page.status_code, 200)
+        return unescape(re.search(r'id="request-export" href="([^"]+)"', page.text)[1])
+
+    def test_manager_export_matches_filtered_page_and_corrected_values(self):
+        self.login()
+        direct = self.keys['direct@example.org']
+        other = self.keys['other@example.org']
+        self.task(self.worker, 1, day='2026-08-01', text='Старое описание')
+        self.task(direct, 2, day='2026-09-13', text='Релиз прямой')
+        self.task(other, 3, text='Релиз чужой')
+        self.task(self.worker, 4, day='2026-09-14', text='Релиз за периодом')
+        self.task(self.worker, 5, text='Другой текст')
+        with ui.get_db_connection() as conn:
+            conn.execute('''INSERT INTO app_request_state(request_uid,response_id,full_name_key,status,
+                override_planned_work_date,override_task_description,override_justification,override_systems,
+                actual_work_date,actual_work_time,created_at,updated_at) VALUES ('req:1',1,?,'cancelled','2026-09-07',
+                'Релиз исправленный','Новое обоснование','Система 1 | Система 2','2026-09-08','11:00 - 13:00',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)''', (self.worker,))
+        params = dict(apply='1', period='range', date_from='2026-09-07', date_to='2026-09-13',
+                      scope='all', employees=[self.worker, direct, other], surname='сОТРУДНИК', text='РЕЛИЗ')
+        page = self.client.get('/manager', params=params)
+        book, rows = self.exported_rows(self.client.get(self.export_link(page)))
+        self.assertEqual([r['ID заявки'] for r in rows],
+                         [int(value) for value in re.findall(r'href="/manager/requests/(\d+)"', page.text)])
+        self.assertEqual({r['ID заявки'] for r in rows}, {1, 2})
+        corrected = next(r for r in rows if r['ID заявки'] == 1)
+        self.assertEqual(corrected['Плановая дата'].date(), date(2026, 9, 7))
+        self.assertEqual(corrected['Задача'], 'Релиз исправленный')
+        self.assertEqual(corrected['Статус'], 'Отменена')
+        self.assertEqual(corrected['Обоснование'], 'Новое обоснование')
+        self.assertEqual(corrected['Информационные системы'], 'Система 1 | Система 2')
+        self.assertEqual(corrected['Фактическая дата'].date(), date(2026, 9, 8))
+        self.assertEqual(corrected['Фактическое время'], '11:00 - 13:00')
+        self.assertIn('Начальник Средний', corrected['Руководитель'])
+        self.assertEqual(book['Заявки'].freeze_panes, 'C2')
+        self.assertEqual(dict(book['Фильтры'].values)['Количество заявок'], 2)
+        params['scope'] = 'direct'
+        _, rows = self.exported_rows(self.client.get('/manager/requests/export', params=params))
+        self.assertEqual([r['ID заявки'] for r in rows], [2])
+
+    def test_manager_download_keeps_applied_filter_and_does_not_change_last_filter(self):
+        self.login()
+        self.task(self.worker, 1)
+        self.task(self.worker, 2, day='2026-09-19')
+        raw = dict(name='Сохранённый', period='range', scope='all', date_from='2026-09-07',
+                   date_to='2026-09-13', employees=[self.worker])
+        page = self.client.post('/manager/filters', data=raw)
+        url = self.export_link(page)
+        # Another tab changes the stored filter; the old page must still export its selection.
+        self.client.post('/manager/filters', data={**raw, 'date_from':'2026-09-14', 'date_to':'2026-09-20'})
+        with ui.get_db_connection() as conn:
+            before = conn.execute('SELECT name,payload FROM app_team_filter WHERE owner_key=? ORDER BY name', (self.root,)).fetchall()
+            before = [tuple(row) for row in before]
+        _, rows = self.exported_rows(self.client.get(url))
+        self.assertEqual([r['ID заявки'] for r in rows], [1])
+        with ui.get_db_connection() as conn:
+            after = [tuple(row) for row in conn.execute('SELECT name,payload FROM app_team_filter WHERE owner_key=? ORDER BY name', (self.root,))]
+        self.assertEqual(before, after)
+        _, rows = self.exported_rows(self.client.get('/manager/requests/export', params={'saved':'Сохранённый'}))
+        self.assertEqual([r['ID заявки'] for r in rows], [2])
+        page = self.client.get('/manager', params={'apply':'1', 'period':'current'})
+        query = parse_qs(urlsplit(self.export_link(page)).query)
+        self.assertEqual(query['period'], ['range'])
+        self.assertIn('date_from', query)
+        self.assertIn('date_to', query)
+
+    def test_manager_export_rechecks_access_and_stale_selection(self):
+        self.login()
+        self.task(self.worker, 1)
+        self.task(self.keys['direct@example.org'], 2)
+        self.task(self.keys['other@example.org'], 3)
+        params = dict(apply='1', period='range', scope='all', date_from='2026-09-07',
+                      date_to='2026-09-13', employees=[self.worker])
+        url = self.export_link(self.client.get('/manager', params=params))
+        with ui.get_db_connection() as conn:
+            d.apply_import(conn, d.plan_import(conn, [['Сотрудник Нижний', 'worker@example.org', 'other@example.org']]))
+        book, rows = self.exported_rows(self.client.get(url))
+        self.assertEqual(rows, [])
+        self.assertEqual(dict(book['Фильтры'].values)['Количество заявок'], 0)
+        # Selecting unrelated identities directly cannot expand permissions.
+        _, rows = self.exported_rows(self.client.get('/manager/requests/export', params={**params, 'employees':[self.worker, self.keys['other@example.org']]}))
+        self.assertEqual(rows, [])
+        with ui.get_db_connection() as conn:
+            d.apply_import(conn, d.plan_import(conn, [['Начальник Средний', 'middle@example.org', ''], ['Сотрудник Прямой', 'direct@example.org', '']]))
+        self.assertEqual(self.client.get(url).status_code, 403)
+
+    def test_export_requires_current_role(self):
+        for url in ['/admin/requests/export', '/manager/requests/export']:
+            self.assertEqual(self.client.get(url).status_code, 403)
+        self.login('worker@example.org')
+        for url in ['/admin/requests/export', '/manager/requests/export']:
+            self.assertEqual(self.client.get(url).status_code, 403)
+        self.login()
+        self.assertEqual(self.client.get('/admin/requests/export').status_code, 403)
+        with ui.get_db_connection() as conn:
+            ui.update_employee_admin_role(conn, self.root, True, 'test')
+        self.exported_rows(self.client.get('/admin/requests/export'))
+        with ui.get_db_connection() as conn:
+            ui.update_employee_status(conn, self.root, 'blocked', 'test', 'test')
+        for url in ['/admin/requests/export', '/manager/requests/export']:
+            self.assertEqual(self.client.get(url).status_code, 403)
+
+    def test_admin_export_combines_live_filters_and_preserves_all_statuses(self):
+        self.admin()
+        self.task(self.worker, 1, day='2026-08-01')
+        self.task(self.worker, 2, day='2026-09-13')
+        self.task(self.keys['direct@example.org'], 3)
+        with ui.get_db_connection() as conn:
+            conn.execute('''INSERT INTO app_request_state(request_uid,response_id,full_name_key,status,
+                override_planned_work_date,override_task_description,override_justification,override_systems,
+                actual_work_date,actual_work_time,created_at,updated_at) VALUES ('req:1',1,?,'cancelled','2026-09-12',
+                'Исправленный текст','Причина','Новая система','2026-09-13','12:00 - 14:00',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)''', (self.worker,))
+        params = dict(filter_name='  НИЖНИЙ ', filter_status='cancelled', filter_date='12/09/2026')
+        page = self.client.get('/admin/requests', params=params)
+        _, rows = self.exported_rows(self.client.get(self.export_link(page)))
+        self.assertEqual([r['ID заявки'] for r in rows], [1])
+        self.assertEqual(rows[0]['Задача'], 'Исправленный текст')
+        self.assertEqual(rows[0]['Обоснование'], 'Причина')
+        self.assertEqual(rows[0]['Информационные системы'], 'Новая система')
+        self.assertEqual(rows[0]['Плановая дата'].date(), date(2026, 9, 12))
+        self.assertEqual(rows[0]['Фактическое время'], '12:00 - 14:00')
+        cases = [({}, [2, 1, 3]), ({'filter_name':'нижний'}, [2, 1]),
+                 ({'filter_date':'12/09/2026'}, [1, 3]), ({'filter_status':'active'}, [2, 3]),
+                 ({'filter_date':'12/09'}, [2, 1, 3]), ({'filter_date':'31/02/2026'}, []),
+                 ({'filter_name':'Не существует'}, [])]
+        for query, expected in cases:
+            with self.subTest(query=query):
+                _, rows = self.exported_rows(self.client.get('/admin/requests/export', params=query))
+                self.assertEqual([r['ID заявки'] for r in rows], expected)
+
+    def test_export_preserves_literal_formula_text_and_invalid_filters_fail(self):
+        self.login()
+        text = '=HYPERLINK("https://example.org", "Текст задачи")'
+        self.task(self.worker, 1, text=text)
+        params = dict(apply='1', scope='all', period='range', date_from='2026-09-07', date_to='2026-09-13')
+        book, rows = self.exported_rows(self.client.get('/manager/requests/export', params=params))
+        self.assertEqual(rows[0]['Задача'], text)
+        cell = next(cell for row in book['Заявки'] for cell in row if cell.value == text)
+        self.assertEqual(cell.data_type, 's')
+        for query in [{**params, 'date_to':'2026-09-01'}, {**params, 'scope':'invalid'}, {'saved':'Unknown'}]:
+            self.assertIn(self.client.get('/manager/requests/export', params=query).status_code, {404, 422})
 
     def test_migration_idempotent_preserves_legacy(self):
         with ui.get_db_connection() as conn:
