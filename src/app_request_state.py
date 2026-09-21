@@ -118,6 +118,11 @@ def ensure_app_tables(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    try:
+        from src.team_directory import ensure_team_tables
+    except ModuleNotFoundError:
+        from team_directory import ensure_team_tables
+    ensure_team_tables(conn)
     _create_app_request_state_table(conn)
     _migrate_app_request_state_statuses(conn)
     request_state_columns = {

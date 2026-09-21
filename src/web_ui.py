@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterator
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -384,34 +384,19 @@ def get_employee_token_record(conn: sqlite3.Connection, full_name_key: str) -> s
 
 
 def resolve_employee_by_name(conn: sqlite3.Connection, full_name: str) -> dict[str, str] | None:
-    normalized = normalize_name_key(full_name)
-    if not normalized:
+    try:
+        from src.team_directory import employees, name_key
+    except ModuleNotFoundError:
+        from team_directory import employees, name_key
+    people = employees(conn)
+    value = full_name.strip().lower()
+    matches = [p for p in people.values() if (p['email'] == value if '@' in value
+               else name_key(p['name']) == name_key(full_name))]
+    if len(matches) > 1:
+        raise HTTPException(409, "Найдено несколько сотрудников. Введите рабочую почту вместо ФИО.")
+    if not matches:
         return None
-    row = conn.execute(
-        """
-        WITH employees AS (
-            SELECT full_name_key, full_name, 0 AS source_order
-            FROM app_employee_directory
-            WHERE full_name_key = ?
-            UNION ALL
-            SELECT DISTINCT
-                r.full_name_key,
-                COALESCE(r.full_name_normalized, r.full_name) AS full_name,
-                1 AS source_order
-            FROM survey_responses r
-            WHERE r.request_type = 'Подать заявку'
-              AND r.full_name_key = ?
-        )
-        SELECT full_name_key, full_name
-        FROM employees
-        ORDER BY source_order, full_name
-        LIMIT 1;
-        """,
-        (normalized, normalized),
-    ).fetchone()
-    if not row:
-        return None
-    return {"employee_key": row["full_name_key"], "full_name": row["full_name"]}
+    return {"employee_key": matches[0]['key'], "full_name": matches[0]['name']}
 
 
 def register_employee_directory_entry(conn: sqlite3.Connection, full_name: str) -> dict[str, str]:
@@ -611,6 +596,8 @@ def authenticate_employee_by_token(request: Request) -> dict[str, Any] | None:
             return None
         employee_name = get_employee_display_name(conn, token_row["full_name_key"])
         profile = get_employee_profile(conn, token_row["full_name_key"])
+        is_manager = conn.execute("SELECT 1 FROM app_org_employee WHERE manager_key=? LIMIT 1",
+                                  (token_row["full_name_key"],)).fetchone() is not None
     if not employee_name or not is_employee_profile_active(profile):
         return None
     return {
@@ -619,6 +606,7 @@ def authenticate_employee_by_token(request: Request) -> dict[str, Any] | None:
         "is_admin": int(profile.get("is_admin") or 0),
         "is_superuser": int(profile.get("is_superuser") or 0),
         "employee_status": profile.get("employee_status") or "active",
+        "is_manager": is_manager,
     }
 
 
@@ -1181,7 +1169,21 @@ def get_admin_employees_overview() -> list[dict[str, Any]]:
             ORDER BY e.full_name;
             """
         ).fetchall()
-    return [dict(row) for row in rows]
+    try:
+        from src.team_directory import employees, team_keys
+    except ModuleNotFoundError:
+        from team_directory import employees, team_keys
+    with get_db_connection() as conn:
+        people = employees(conn)
+        result = {}
+        for row in rows:
+            user = dict(row)
+            person = people.get(user['employee_key'], {})
+            user.update(full_name=person.get('name', user['full_name']), work_email=person.get('email', ''),
+                        manager_name=people.get(person.get('manager'), {}).get('name', ''),
+                        is_manager=bool(team_keys(conn, user['employee_key'])))
+            result[user['employee_key']] = user
+    return sorted(result.values(), key=lambda user: user['full_name'])
 
 
 def delete_admin_test_data_for_date(conn: sqlite3.Connection, planned_work_date: str) -> int:
@@ -2086,8 +2088,16 @@ def employee_login(
 
     with get_db_connection() as conn:
         ensure_app_tables(conn)
-        employee = resolve_employee_by_name(conn, full_name)
+        try:
+            employee = resolve_employee_by_name(conn, full_name)
+        except HTTPException as exc:
+            return redirect_with_message("/employee", str(exc.detail), "error")
         if not employee:
+            if '@' in full_name:
+                return redirect_with_message("/employee", "Почта не найдена в реестре. Обратитесь к администратору", "error")
+            if conn.execute("SELECT 1 FROM app_employee_directory WHERE full_name_key=?",
+                            (normalize_name_key(full_name),)).fetchone():
+                return redirect_with_message("/employee", "Запись уже существует. Войдите по рабочей почте или обратитесь к администратору", "error")
             if not validate_new_employee_full_name(full_name, no_patronymic=no_patronymic_flag):
                 expected_name_format = "Фамилия Имя" if no_patronymic_flag else "Фамилия Имя Отчество"
                 return redirect_with_message(
@@ -2114,13 +2124,16 @@ def employee_login(
                 "error",
             )
         token_record = get_employee_token_record(conn, employee["employee_key"])
+        imported = conn.execute("SELECT 1 FROM app_org_employee WHERE employee_key=?", (employee["employee_key"],)).fetchone()
+        if imported and not token_record:
+            return redirect_with_message("/employee", "Для первого входа получите персональный токен у администратора", "info")
 
     if token_record:
         if not access_token:
             return RedirectResponse(
                 url=(
                     f"/employee?pending_employee_key={employee['employee_key']}"
-                    f"&pending_employee_name={employee['full_name']}"
+                    f"&pending_employee_name={quote(full_name, safe='')}"
                     f"&msg=Для этого сотрудника уже выдан токен. Укажите токен или нажмите Забыл токен."
                     f"&level=info"
                 ),
@@ -2132,7 +2145,7 @@ def employee_login(
             return RedirectResponse(
                 url=(
                     f"/employee?pending_employee_key={employee['employee_key']}"
-                    f"&pending_employee_name={employee['full_name']}"
+                    f"&pending_employee_name={quote(full_name, safe='')}"
                     f"&msg=Токен не найден или устарел"
                     f"&level=error"
                 ),
@@ -2282,7 +2295,10 @@ def employee_forgot_token(full_name: str = Form(...)) -> RedirectResponse:
         )
     with get_db_connection() as conn:
         ensure_app_tables(conn)
-        employee = resolve_employee_by_name(conn, full_name)
+        try:
+            employee = resolve_employee_by_name(conn, full_name)
+        except HTTPException as exc:
+            return redirect_with_message("/employee", str(exc.detail), "error")
         if not employee:
             return redirect_with_message("/employee", "Сотрудник с таким ФИО не найден", "error")
         token_record = get_employee_token_record(conn, employee["employee_key"])
@@ -3104,3 +3120,10 @@ def download_report(request: Request, filename: str) -> FileResponse:
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="Файл не найден")
     return FileResponse(path=target, filename=target.name)
+
+
+try:
+    from src.team_routes import register_routes
+except ModuleNotFoundError:
+    from team_routes import register_routes
+register_routes(sys.modules[__name__])
