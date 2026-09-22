@@ -617,7 +617,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
 
         with patch.object(web_ui, "DB_PATH", self.db_path):
             client = TestClient(web_ui.app)
-            valid_login = client.post("/employee/login", data={"full_name": valid_name}, follow_redirects=False)
+            valid_login = client.post("/employee/login", data={"full_name": valid_name, "work_email": "elkin@example.org"}, follow_redirects=False)
             invalid_two_parts = client.post(
                 "/employee/login",
                 data={"full_name": "Иванов Иван"},
@@ -625,7 +625,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             )
             valid_two_parts = client.post(
                 "/employee/login",
-                data={"full_name": valid_name_without_patronymic, "no_patronymic": "1"},
+                data={"full_name": valid_name_without_patronymic, "no_patronymic": "1", "work_email": "elkin-semenov@example.org"},
                 follow_redirects=False,
             )
             invalid_three_parts_with_flag = client.post(
@@ -1081,7 +1081,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual(200, index_response.status_code)
         self.assertIn("Work on Holiday", index_response.text)
         self.assertIn("Кабинет сотрудника", index_response.text)
-        self.assertIn("Первичная настройка", index_response.text)
+        self.assertIn("Суперпользователь", index_response.text)
         self.assertIn('href="/employee"', index_response.text)
         self.assertNotIn('href="/admin"', index_response.text)
         self.assertIn('data-hamburger-menu="true"', index_response.text)
@@ -1091,7 +1091,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn("Токен сотрудника создан", login_response.text)
         self.assertEqual(200, employee_response.status_code)
         self.assertIn("Кабинет сотрудника", employee_response.text)
-        self.assertIn('class="tooltip"', employee_response.text)
+        self.assertIn('class="help-tooltip"', employee_response.text)
         self.assertIn('placeholder="ДД/ММ/ГГГГ"', employee_response.text)
         self.assertIn('data-date-picker="true"', employee_response.text)
         self.assertIn('data-time-mask="true"', employee_response.text)
@@ -1665,7 +1665,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
             client = TestClient(web_ui.app)
             response = client.post(
                 "/employee/login",
-                data={"full_name": full_name, "grade_12_plus": "1"},
+                data={"full_name": full_name, "grade_12_plus": "1", "work_email": "novikov@example.org"},
             )
             self.assertEqual(200, response.status_code)
             self.assertIn("Токен сотрудника создан", response.text)
@@ -1711,7 +1711,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
                 (full_name_key,),
             ).fetchone()
 
-        self.assertEqual((full_name, None, None), directory_row)
+        self.assertEqual((full_name, "novikov@example.org", None), directory_row)
         self.assertEqual((1, "active"), profile_row)
         self.assertIsNotNone(auth_row)
         self.assertTrue(auth_row[0])
@@ -1833,7 +1833,7 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertIn('data-time-mask="true"', test_data_response.text)
         self.assertIn('data-hamburger-menu="true"', test_data_response.text)
         self.assertEqual(200, employee_login_response.status_code)
-        self.assertIn('maxlength="150"', employee_login_response.text)
+        self.assertIn('maxlength="254"', employee_login_response.text)
         self.assertIn('maxlength="128"', employee_login_response.text)
         self.assertEqual(200, employee_registration_response.status_code)
         self.assertIn('id="employee-no-patronymic"', employee_registration_response.text)

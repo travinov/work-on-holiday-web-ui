@@ -1,163 +1,23 @@
-<!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Кабинет сотрудника</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { max-width: 1240px; margin: 24px auto; padding: 0 18px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1f2937; background: #f8fafc; }
-    a { color: #1d4ed8; text-decoration: none; }
-    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
-    .hamburger-menu { position: relative; }
-    .hamburger-menu summary { list-style: none; cursor: pointer; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; padding: 8px 12px; font-size: 20px; line-height: 1; user-select: none; }
-    .hamburger-menu summary::-webkit-details-marker { display: none; }
-    .hamburger-panel { position: absolute; right: 0; top: calc(100% + 8px); min-width: 240px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px; box-shadow: 0 14px 32px rgba(15, 23, 42, .16); padding: 10px; z-index: 20; display: grid; gap: 8px; }
-    .hamburger-link { display: block; padding: 8px 10px; border-radius: 8px; color: #1f2937; text-decoration: none; }
-    .hamburger-link:hover { background: #f1f5f9; }
-    .card { background: #fff; border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
-    .msg { padding: 10px 12px; border-radius: 8px; margin: 10px 0 14px; }
-    .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
-    .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
-    .msg.info { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
-    .msg.token-warning { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; font-weight: 800; }
-    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .login-input { flex: 1 1 320px; width: min(100%, 420px); min-width: 0; }
-    .check-row { display: inline-flex; gap: 8px; align-items: center; color: #334155; }
-    .check-row input[type="checkbox"] { width: auto; }
-    select, input, textarea, button { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; font-size: 15px; line-height: 1.35; }
-    textarea { width: 100%; min-height: 64px; }
-    button { background: #111827; color: #fff; cursor: pointer; }
-    button.light { background: #fff; color: #111827; }
-    button.cancel { background: #b91c1c; color: #fff; border-color: #991b1b; }
-    .badge { display: inline-block; font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; }
-    .badge.active { background: #eff6ff; color: #1e40af; border-color: #93c5fd; }
-    .badge.in_progress { background: #fff7ed; color: #9a3412; border-color: #fdba74; }
-    .badge.in_fact { background: #f0fdf4; color: #166534; border-color: #86efac; }
-    .badge.completed { background: #ecfdf5; color: #065f46; border-color: #6ee7b7; }
-    .badge.cancelled { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
-    .chip { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 10px; border-radius: 999px; border: 1px solid #dbe4f0; background: #f8fbff; color: #334155; }
-    .hero-card { background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%); border-color: #cbd5e1; }
-    .hero-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
-    .hero-title { margin: 0; font-size: 30px; letter-spacing: -0.03em; }
-    .hero-subtitle { margin: 8px 0 0; color: #475569; max-width: 60ch; line-height: 1.45; }
-    .hero-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
-    .section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 12px; }
-    .section-title { margin: 0; font-size: 24px; letter-spacing: -0.03em; }
-    .section-note { color: #64748b; font-size: 14px; }
-    .create-request { padding: 0; overflow: visible; background: #fff; }
-    .create-request summary { list-style: none; cursor: pointer; padding: 0; }
-    .create-request summary::-webkit-details-marker { display: none; }
-    .create-trigger { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 14px 16px; }
-    .create-trigger-main { display: grid; gap: 6px; }
-    .create-trigger-title { font-size: 18px; font-weight: 700; color: #0f172a; }
-    .create-trigger-text { color: #475569; font-size: 14px; line-height: 1.35; max-width: 52ch; }
-    .create-trigger-action { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 16px; border-radius: 12px; background: #111827; color: #fff; font-weight: 700; white-space: nowrap; }
-    .create-request[open] .create-trigger { border-bottom: 1px solid #e2e8f0; }
-    .create-body { padding: 12px 16px 16px; background: transparent; }
-    .form-grid { display: grid; grid-template-columns: minmax(196px, 220px) minmax(280px, 340px) minmax(220px, 260px); gap: 10px 12px; align-items: start; justify-content: start; }
-    .field-card { display: grid; gap: 6px; padding: 0; border: 0; background: transparent; }
-    .field-card label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 650; margin: 0; color: #334155; }
-    .field-card input, .field-card select, .field-card textarea { width: 100%; min-height: 42px; background: #fff; color: #0f172a; }
-    .field-card select { display: block; height: 42px; background-color: #fff; }
-    .field-card textarea { min-height: 76px; padding-top: 10px; resize: vertical; }
-    .field-card.full-width { grid-column: 1 / -1; }
-    .field-card.payment-field { max-width: 260px; }
-    .create-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
-    .create-actions button { min-height: 42px; padding: 0 16px; font-weight: 700; }
-    .create-note { color: #64748b; font-size: 14px; max-width: 58ch; }
-    .action-grid { display: grid; grid-template-columns: minmax(260px, .72fr) minmax(480px, 1.28fr); gap: 12px; margin-top: 10px; }
-    .action-card { min-width: 0; margin: 0; }
-    .actual-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; }
-    .actual-grid .field-card { min-width: 0; }
-    .actual-grid .read-only-value { max-width: 196px; }
-    .correction-grid { display: grid; grid-template-columns: minmax(260px, 280px) minmax(280px, 1fr); gap: 10px 12px; align-items: start; min-width: 0; }
-    .correction-grid > .field-card { min-width: 0; }
-    .correction-grid .payment-field { grid-column: 1 / -1; }
-    .request-item { padding: 0; overflow: visible; }
-    .request-item summary { list-style: none; cursor: pointer; padding: 16px; }
-    .request-item summary::-webkit-details-marker { display: none; }
-    .request-item[open] summary { border-bottom: 1px solid #e5e7eb; }
-    .summary-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .summary-main { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-weight: 600; }
-    .summary-divider { color: #94a3b8; }
-    .summary-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .request-body { padding: 16px; }
-    .meta { color: #4b5563; font-size: 14px; margin-top: 6px; }
-    .prewrap { white-space: pre-line; }
-    .field-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .tooltip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 999px; border: 1px solid #94a3b8; color: #475569; font-size: 12px; font-weight: 700; cursor: help; background: #fff; }
-    .tooltip .tooltip-text { visibility: hidden; opacity: 0; transition: opacity .15s ease; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(calc(-50% + var(--tooltip-shift, 0px))); width: max-content; min-width: 220px; max-width: min(320px, calc(100vw - 32px)); padding: 8px 10px; border-radius: 8px; background: #111827; color: #fff; font-size: 12px; line-height: 1.35; text-align: left; z-index: 300; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); overflow-wrap: anywhere; pointer-events: none; }
-    .tooltip:hover .tooltip-text, .tooltip:focus .tooltip-text { visibility: visible; opacity: 1; }
-
-    {% include "includes/date_time_controls.css" %}
-    .systems-editor { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-height: 42px; width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #0f172a; }
-    .systems-token-list { display: contents; }
-    .system-token { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; max-width: 100%; padding: 3px 5px 3px 9px; border: 1px solid #bfdbfe; border-radius: 999px; background: #eff6ff; color: #1e3a8a; overflow-wrap: anywhere; }
-    .system-token-remove { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 999px; background: #e2e8f0 !important; color: #334155 !important; font-size: 14px; line-height: 1; }
-    .systems-token-input { flex: 1 1 180px; min-width: 150px; min-height: 28px !important; padding: 3px 2px !important; border: 0 !important; border-radius: 0 !important; outline: none; background: transparent !important; }
-    .field-hint { color: #64748b; font-size: 13px; line-height: 1.35; }
-    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-    .read-only-value { min-height: 42px; display: flex; align-items: center; padding: 8px 10px; border-radius: 8px; background: #f8fafc; color: #334155; }
-    .request-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
-    @media (max-width: 1100px) {
-      .correction-grid { grid-template-columns: minmax(0, 1fr); }
-      .correction-grid .payment-field { grid-column: 1; }
-    }
-    @media (max-width: 820px) {
-      body { margin: 16px auto; padding: 0 14px; }
-      .hero-title { font-size: 24px; }
-      .create-trigger { align-items: flex-start; }
-      .create-trigger-action { width: 100%; }
-      .form-grid, .correction-grid, .actual-grid, .action-grid { grid-template-columns: minmax(0, 1fr); }
-      .field-card.full-width { grid-column: 1; }
-      .field-card.payment-field { max-width: none; }
-      .compact-date .date-input-wrap { max-width: 100%; }
-      .summary-main, .summary-meta { min-width: 0; }
-      .summary-main span { overflow-wrap: anywhere; }
-      .systems-token-input { min-width: 120px; }
-    }
-  </style>
-</head>
-<body>
-  {% if is_superuser or (employee_session and employee_session.is_manager) %}<div class="card"><a href="/manager">Задачи команды{% if is_superuser %} — вся организация{% endif %} →</a></div>{% endif %}
-  <div class="topbar">
-    <h1 style="margin: 0;">Кабинет сотрудника</h1>
-    <details class="hamburger-menu" data-hamburger-menu="true">
-      <summary aria-label="Открыть меню">☰</summary>
-      <nav class="hamburger-panel">
-        {% if is_superuser or (employee_session and employee_session.is_manager) %}<a class="hamburger-link" href="/manager">Задачи команды</a>{% endif %}
-        <a class="hamburger-link" href="/">Главная</a>
-        {% if is_admin %}
-          <a class="hamburger-link" href="/admin">Кабинет администратора</a>
-        {% endif %}
-        <a class="hamburger-link" href="/employee">Кабинет сотрудника</a>
-        {% if is_admin %}
-          <a class="hamburger-link" href="/employee?admin_mode=1">Кабинет сотрудника: админ</a>
-          <a class="hamburger-link" href="/admin/users">Пользователи</a>
-          <a class="hamburger-link" href="/admin/requests">Заявки</a>
-          <a class="hamburger-link" href="/admin/test-data">Тестовые данные</a>
-        {% endif %}
-      </nav>
-    </details>
-  </div>
-
-  {% if admin_mode %}
-    <div class="card" style="background:#eff6ff; border-color:#93c5fd;">
+{% extends "base.html" %}
+{% block title %}Кабинет сотрудника{% endblock %}
+{% block page_id %}employee{% endblock %}
+{% block heading %}Кабинет сотрудника{% endblock %}
+{% block description %}Планируйте выходы, уточняйте заявки и указывайте фактическое время.{% endblock %}
+{% block content %}
+{% if admin_mode %}
+    <div class="card app-card" style="background:#eff6ff; border-color:#93c5fd;">
       <strong>Режим администратора.</strong> В этом режиме можно корректировать заявки даже после закрытия недели отчетом.
     </div>
   {% endif %}
 
-  {% if msg %}
-    <div class="msg {{ level }}" role="status" aria-live="polite">{{ msg }}</div>
-  {% endif %}
+
 
   {% if admin_mode %}
-    <div class="card">
-      <form action="/employee" method="get" class="row">
+    <div class="card app-card">
+      <form action="/employee" method="get" class="action-row">
         <input type="hidden" name="admin_mode" value="1" />
         <label for="admin-employee-key"><strong>Сотрудник:</strong></label>
-        <select id="admin-employee-key" name="employee_key" required>
+        <select class="form-select" id="admin-employee-key" name="employee_key" required>
           <option value="">Выберите сотрудника</option>
           {% for employee in employees %}
             <option value="{{ employee.employee_key }}" {% if selected and selected.employee_key == employee.employee_key %}selected{% endif %}>
@@ -165,17 +25,17 @@
             </option>
           {% endfor %}
         </select>
-        <button type="submit">Открыть кабинет</button>
+        <button class="btn btn-primary" type="submit">Открыть кабинет</button>
       </form>
     </div>
   {% elif not employee_session %}
-    <div class="card">
+    <div class="card app-card">
       <h3 style="margin-top:0;">Вход сотрудника</h3>
-      <p class="meta">Введите ФИО или рабочую почту из реестра. При совпадении ФИО используйте почту. Для первого входа после импорта получите токен у администратора. Для самостоятельной регистрации нового сотрудника укажите полное ФИО.</p>
+      <p class="meta">Для входа введите ФИО или рабочую почту. При совпадении ФИО используйте почту. Для первого входа после импорта получите токен у администратора. Для самостоятельной регистрации укажите полное ФИО и заполните рабочую почту ниже.</p>
       <form action="/employee/login" method="post">
-        <div class="row">
+        <div class="action-row">
           <label for="employee-full-name"><strong>ФИО или рабочая почта</strong></label>
-          <span class="tooltip" tabindex="0">?
+          <span class="help-tooltip" tabindex="0">?
             <span class="tooltip-text">Рабочая почта однозначно определяет сотрудника из реестра. Для новой регистрации укажите полное ФИО без сокращений. Буква Ё и дефис (-) разрешены.</span>
           </span>
           <input
@@ -183,53 +43,58 @@
             type="text"
             name="full_name"
             placeholder="ФИО или рабочая почта"
-            class="login-input"
+            class="form-control login-input"
             value="{{ pending_employee_name or '' }}"
-            maxlength="{{ full_name_max_length }}"
+            maxlength="254"
             required
           />
         </div>
         {% if pending_employee_key %}
           <input type="hidden" name="employee_key" value="{{ pending_employee_key }}" />
-          <div class="row" style="margin-top:10px;">
+          <div class="action-row" style="margin-top:10px;">
             <label for="employee-access-token"><strong>Токен</strong></label>
-            <span class="tooltip" tabindex="0">?
+            <span class="help-tooltip" tabindex="0">?
               <span class="tooltip-text">Введите ранее выданный токен. Если токен потерян, используйте кнопку Забыл токен.</span>
             </span>
-            <input id="employee-access-token" class="login-input" type="text" name="access_token" placeholder="Токен доступа" maxlength="{{ access_token_max_length }}" required />
-            <button type="submit">Войти</button>
+            <input id="employee-access-token" class="form-control login-input" type="text" name="access_token" placeholder="Токен доступа" maxlength="{{ access_token_max_length }}" required />
+            <button class="btn btn-primary" type="submit">Войти</button>
           </div>
         {% else %}
-          <div class="row" style="margin-top:10px;">
+          <div class="action-row" style="margin-top:10px;">
+            <label for="employee-work-email"><strong>Рабочая почта для регистрации</strong></label>
+            <input id="employee-work-email" class="form-control login-input" type="email" name="work_email" placeholder="name@company.ru" maxlength="254" autocomplete="email" aria-describedby="employee-work-email-hint" />
+          </div>
+          <p class="meta" id="employee-work-email-hint">Обязательна при создании нового сотрудника. Если вы уже зарегистрированы, повторно заполнять не нужно.</p>
+          <div class="action-row" style="margin-top:10px;">
             <input type="hidden" name="no_patronymic" value="0" />
             <label class="check-row" for="employee-no-patronymic">
-              <input id="employee-no-patronymic" type="checkbox" name="no_patronymic" value="1" />
+              <input class="form-check-input" id="employee-no-patronymic" type="checkbox" name="no_patronymic" value="1" />
               <strong>Нет отчества</strong>
             </label>
-            <span class="tooltip" tabindex="0">?
+            <span class="help-tooltip" tabindex="0">?
               <span class="tooltip-text">Установите флаг, только если отчества нет. Тогда при регистрации укажите фамилию и имя; буква Ё и дефис (-) разрешены.</span>
             </span>
           </div>
-          <div class="row" style="margin-top:10px;">
+          <div class="action-row" style="margin-top:10px;">
             <input type="hidden" name="grade_12_plus" value="0" />
             <label class="check-row" for="employee-grade-12-plus">
-              <input id="employee-grade-12-plus" type="checkbox" name="grade_12_plus" value="1" />
+              <input class="form-check-input" id="employee-grade-12-plus" type="checkbox" name="grade_12_plus" value="1" />
               <strong>Мой грейд 12 или выше</strong>
             </label>
-            <span class="tooltip" tabindex="0">?
+            <span class="help-tooltip" tabindex="0">?
               <span class="tooltip-text">Используется в отчетности для проверки условий выхода. Сам номер грейда не вводится.</span>
             </span>
           </div>
-          <div class="row" style="margin-top:10px;">
-            <button type="submit">Продолжить</button>
+          <div class="action-row" style="margin-top:10px;">
+            <button class="btn btn-primary" type="submit">Продолжить</button>
           </div>
         {% endif %}
       </form>
 
       {% if pending_employee_key %}
-        <form action="/employee/forgot-token" method="post" class="row" style="margin-top: 10px;">
+        <form action="/employee/forgot-token" method="post" class="action-row" style="margin-top: 10px;">
           <input type="hidden" name="full_name" value="{{ pending_employee_name }}" />
-          <button type="submit" class="light">Забыл токен</button>
+          <button type="submit" class="btn btn-outline-secondary light">Забыл токен</button>
           <span class="meta" style="margin-top: 0;">Обратитесь к Морозовой Анне для получения нового.</span>
         </form>
       {% endif %}
@@ -237,12 +102,12 @@
   {% endif %}
 
   {% if selected %}
-    <div class="card hero-card">
+    <div class="card app-card hero-card">
       <div class="hero-head">
         <div>
           <h2 class="hero-title">{{ selected.full_name }}</h2>
           <p class="hero-subtitle">
-            Работайте с заявками без перегруженного экрана: создавайте новую заявку только когда это нужно, а действующие записи просматривайте ниже в компактном списке.
+            Ваши плановые выходы и фактически отработанное время.
           </p>
           <div class="hero-meta">
             <span class="chip">Заявок в кабинете: {{ requests|length }}</span>
@@ -257,15 +122,15 @@
             {% endif %}
           </div>
         </div>
-        <div class="row" style="margin-top: 4px;">
+        <div class="action-row" style="margin-top: 4px;">
         {% if admin_mode %}
           <form action="/admin/employee/reissue-token" method="post">
             <input type="hidden" name="employee_key" value="{{ selected.employee_key }}" />
-            <button type="submit" class="light">Перевыпустить токен</button>
+            <button type="submit" class="btn btn-outline-secondary light">Перевыпустить токен</button>
           </form>
         {% elif employee_session %}
           <form action="/employee/logout" method="post">
-            <button type="submit" class="light">Выйти</button>
+            <button type="submit" class="btn btn-outline-secondary light">Выйти</button>
           </form>
         {% endif %}
         </div>
@@ -278,7 +143,7 @@
           <div class="create-trigger-main">
             <div class="create-trigger-title">Создать новую заявку</div>
             <div class="create-trigger-text">
-              Откройте форму только в момент, когда нужно добавить новый выход. Это поддерживает чистый экран и не смешивает создание новой заявки с уже существующими.
+              Укажите дату, время, задачу и условия выхода.
             </div>
           </div>
           <span class="create-trigger-action" data-create-trigger-label>Открыть форму</span>
@@ -291,24 +156,24 @@
         <div class="form-grid">
           <div class="field-card compact-date">
             <label for="create-planned-date">Плановая дата
-              <span class="tooltip" tabindex="0">?
+              <span class="help-tooltip" tabindex="0">?
                 <span class="tooltip-text">Дата выхода в выходной день. Можно создавать несколько заявок на одну дату.</span>
               </span>
             </label>
             <input type="hidden" name="planned_work_date" value="{{ today }}" />
-            <input id="create-planned-date" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+            <input class="form-control" id="create-planned-date" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
           </div>
           <div class="field-card">
             <label for="create-time-start">Плановое время
-              <span class="tooltip" tabindex="0">?
+              <span class="help-tooltip" tabindex="0">?
                 <span class="tooltip-text">Формат времени: HH:MM - HH:MM. Можно указать отдельный временной слот в тот же день.</span>
               </span>
             </label>
             <div class="time-range-control" data-time-range data-allow-overnight="true">
-              <input id="create-time-start" type="text" data-time-start data-time-part data-time-mask="true" placeholder="09:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Плановое время начала" required />
+              <input class="form-control" id="create-time-start" type="text" data-time-start data-time-part data-time-mask="true" placeholder="09:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Плановое время начала" required />
               <span class="time-range-separator" aria-hidden="true">—</span>
               <label class="sr-only" for="create-time-end">Плановое время окончания</label>
-              <input id="create-time-end" type="text" data-time-end data-time-part data-time-mask="true" placeholder="18:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Плановое время окончания" required />
+              <input class="form-control" id="create-time-end" type="text" data-time-end data-time-part data-time-mask="true" placeholder="18:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Плановое время окончания" required />
               <input type="hidden" name="planned_work_time" data-time-range-value value="" />
               <div class="time-feedback" aria-live="polite">
                 <div class="time-duration" data-duration></div>
@@ -319,11 +184,11 @@
           </div>
           <div class="field-card payment-field">
             <label for="create-payment-type">Условия выхода
-              <span class="tooltip" tabindex="0">?
+              <span class="help-tooltip" tabindex="0">?
                 <span class="tooltip-text">Укажите тип компенсации за выход в выходной день.</span>
               </span>
             </label>
-            <select id="create-payment-type" name="payment_type" required>
+            <select class="form-select" id="create-payment-type" name="payment_type" required>
               <option value="Отгул">Отгул</option>
               {% if not profile or not profile.grade_12_plus %}
                 <option value="Двойная оплата" selected>Двойная оплата</option>
@@ -335,25 +200,25 @@
           </div>
           <div class="field-card full-width">
             <label for="create-task-description">Задача
-              <span class="tooltip" tabindex="0">?
+              <span class="help-tooltip" tabindex="0">?
                 <span class="tooltip-text">Название релиза, задачи или вида работ.</span>
               </span>
             </label>
-            <textarea id="create-task-description" name="task_description" maxlength="{{ task_description_max_length }}" placeholder="Например: релиз ФП05, сопровождение ночного окна" required></textarea>
+            <textarea class="form-control" id="create-task-description" name="task_description" maxlength="{{ task_description_max_length }}" placeholder="Например: релиз ФП05, сопровождение ночного окна" required></textarea>
             <div class="field-hint">Не более {{ task_description_max_length }} символов.</div>
           </div>
           <div class="field-card full-width">
             <label for="create-justification">Обоснование
-              <span class="tooltip" tabindex="0">?
+              <span class="help-tooltip" tabindex="0">?
                 <span class="tooltip-text">Почему работы нужно выполнять именно в выходной день.</span>
               </span>
             </label>
-            <textarea id="create-justification" name="justification" maxlength="{{ justification_max_length }}" placeholder="Например: недоступность окна в рабочее время" required></textarea>
+            <textarea class="form-control" id="create-justification" name="justification" maxlength="{{ justification_max_length }}" placeholder="Например: недоступность окна в рабочее время" required></textarea>
             <div class="field-hint">Не более {{ justification_max_length }} символов.</div>
           </div>
           <div class="field-card full-width">
             <label for="create-systems-input">АС
-              <span class="tooltip" tabindex="0">?
+              <span class="help-tooltip" tabindex="0">?
                 <span class="tooltip-text">Введите одну АС и нажмите Enter или Tab. Несколько АС будут разделены вертикальной линией.</span>
               </span>
             </label>
@@ -366,14 +231,14 @@
               data-systems-total-max-length="{{ systems_total_max_length }}"
             >
               <div class="systems-token-list" data-systems-token-list></div>
-              <input id="create-systems-input" type="text" class="systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" maxlength="{{ systems_total_max_length }}" aria-describedby="create-systems-hint" />
+              <input id="create-systems-input" type="text" class="form-control systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" maxlength="{{ systems_total_max_length }}" aria-describedby="create-systems-hint" />
             </div>
             <div class="field-hint" id="create-systems-hint">До {{ systems_max_count }} АС, не более {{ system_name_max_length }} символов каждая. После ввода одной АС нажмите Enter или Tab. Список можно вставить через |, запятую или точку с запятой.</div>
           </div>
         </div>
         <div class="create-actions">
           <div class="create-note">Создавайте отдельную заявку на каждый независимый временной слот, даже если он приходится на ту же дату.</div>
-          <button type="submit">Создать заявку</button>
+          <button class="btn btn-primary" type="submit">Создать заявку</button>
         </div>
       </form>
       </div>
@@ -382,13 +247,13 @@
     <div class="section-head">
       <div>
         <h3 class="section-title">Мои заявки</h3>
-        <div class="section-note">Компактный список: дата, день недели и время. Детали открываются только по необходимости.</div>
+        <div class="section-note">Откройте заявку, чтобы посмотреть детали или внести изменения.</div>
       </div>
     </div>
 
     {% if not requests %}
-      <div class="card">
-        <div class="section-note">Пока нет созданных заявок. Используйте кнопку `Создать новую заявку`, чтобы добавить первый выход в выходной.</div>
+      <div class="card app-card">
+        <div class="section-note">Пока нет созданных заявок. Используйте кнопку «Создать новую заявку», чтобы добавить первый выход в выходной.</div>
       </div>
     {% endif %}
 
@@ -421,7 +286,7 @@
         {% endif %}
 
         <div class="action-grid">
-          <div class="card action-card">
+          <div class="card app-card action-card">
             <h4 style="margin-top:0;">Фактически отработанное время</h4>
             {% if req.status != 'cancelled' and req.can_edit_actual %}
               <form action="/employee/request/actual" method="post">
@@ -436,15 +301,15 @@
                   </div>
                   <div class="field-card">
                     <label for="actual-time-start-{{ req.response_id }}">Время
-                      <span class="tooltip" tabindex="0">?
+                      <span class="help-tooltip" tabindex="0">?
                         <span class="tooltip-text">Укажите фактические часы начала и окончания работы.</span>
                       </span>
                     </label>
                     <div class="time-range-control" data-time-range>
-                      <input id="actual-time-start-{{ req.response_id }}" type="text" data-time-start data-time-part data-time-mask="true" placeholder="09:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Фактическое время начала" required />
+                      <input class="form-control" id="actual-time-start-{{ req.response_id }}" type="text" data-time-start data-time-part data-time-mask="true" placeholder="09:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Фактическое время начала" required />
                       <span class="time-range-separator" aria-hidden="true">—</span>
                       <label class="sr-only" for="actual-time-end-{{ req.response_id }}">Фактическое время окончания</label>
-                      <input id="actual-time-end-{{ req.response_id }}" type="text" data-time-end data-time-part data-time-mask="true" placeholder="18:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Фактическое время окончания" required />
+                      <input class="form-control" id="actual-time-end-{{ req.response_id }}" type="text" data-time-end data-time-part data-time-mask="true" placeholder="18:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Фактическое время окончания" required />
                       <input type="hidden" name="actual_work_time" data-time-range-value value="{{ req.actual_work_time or req.planned_work_time or '' }}" />
                       <div class="time-feedback" aria-live="polite">
                         <div class="time-duration" data-duration></div>
@@ -453,7 +318,7 @@
                     </div>
                   </div>
                 </div>
-                <div class="request-actions"><button type="submit">Сохранить фактическое время</button></div>
+                <div class="request-actions"><button class="btn btn-primary" type="submit">Сохранить фактическое время</button></div>
               </form>
             {% else %}
               <div class="meta"><strong>Дата:</strong> {{ req.actual_work_date_ru or req.planned_work_date_ru or '—' }}</div>
@@ -464,7 +329,7 @@
           </div>
 
           {% if req.status != 'cancelled' and req.can_edit_planning %}
-            <div class="card action-card">
+            <div class="card app-card action-card">
               <h4 style="margin-top:0;">Корректировка заявки</h4>
               <form action="/employee/request/correct" method="post">
                 <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
@@ -473,20 +338,20 @@
                 <div class="correction-grid">
                   <div class="field-card compact-date">
                     <label for="correct-date-{{ req.response_id }}">Плановая дата
-                      <span class="tooltip" tabindex="0">?<span class="tooltip-text">Дата, на которую переносится или уточняется выход по заявке.</span></span>
+                      <span class="help-tooltip" tabindex="0">?<span class="tooltip-text">Дата, на которую переносится или уточняется выход по заявке.</span></span>
                     </label>
                     <input type="hidden" name="planned_work_date" value="{{ req.planned_work_date_iso }}" />
-                    <input id="correct-date-{{ req.response_id }}" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+                    <input class="form-control" id="correct-date-{{ req.response_id }}" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
                   </div>
                   <div class="field-card">
                     <label for="correct-time-start-{{ req.response_id }}">Плановое время
-                      <span class="tooltip" tabindex="0">?<span class="tooltip-text">Укажите часы начала и окончания работы.</span></span>
+                      <span class="help-tooltip" tabindex="0">?<span class="tooltip-text">Укажите часы начала и окончания работы.</span></span>
                     </label>
                     <div class="time-range-control" data-time-range>
-                      <input id="correct-time-start-{{ req.response_id }}" type="text" data-time-start data-time-part data-time-mask="true" placeholder="09:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Плановое время начала" required />
+                      <input class="form-control" id="correct-time-start-{{ req.response_id }}" type="text" data-time-start data-time-part data-time-mask="true" placeholder="09:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Плановое время начала" required />
                       <span class="time-range-separator" aria-hidden="true">—</span>
                       <label class="sr-only" for="correct-time-end-{{ req.response_id }}">Плановое время окончания</label>
-                      <input id="correct-time-end-{{ req.response_id }}" type="text" data-time-end data-time-part data-time-mask="true" placeholder="18:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Плановое время окончания" required />
+                      <input class="form-control" id="correct-time-end-{{ req.response_id }}" type="text" data-time-end data-time-part data-time-mask="true" placeholder="18:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Плановое время окончания" required />
                       <input type="hidden" name="planned_work_time" data-time-range-value value="{{ req.planned_work_time }}" />
                       <div class="time-feedback" aria-live="polite">
                         <div class="time-duration" data-duration></div>
@@ -496,9 +361,9 @@
                   </div>
                   <div class="field-card payment-field">
                     <label for="correct-payment-{{ req.response_id }}">Условия выхода
-                      <span class="tooltip" tabindex="0">?<span class="tooltip-text">Выберите компенсацию за выход: отгул или двойная оплата.</span></span>
+                      <span class="help-tooltip" tabindex="0">?<span class="tooltip-text">Выберите компенсацию за выход: отгул или двойная оплата.</span></span>
                     </label>
-                    <select id="correct-payment-{{ req.response_id }}" name="payment_type" required>
+                    <select class="form-select" id="correct-payment-{{ req.response_id }}" name="payment_type" required>
                       <option value="Отгул" {% if req.payment_type == 'Отгул' %}selected{% endif %}>Отгул</option>
                       {% if not profile or not profile.grade_12_plus %}<option value="Двойная оплата" {% if req.payment_type == 'Двойная оплата' %}selected{% endif %}>Двойная оплата</option>{% endif %}
                     </select>
@@ -506,12 +371,12 @@
                   </div>
                   <div class="field-card full-width">
                     <label for="correct-task-{{ req.response_id }}">Задача</label>
-                    <textarea id="correct-task-{{ req.response_id }}" name="task_description" maxlength="{{ task_description_max_length }}" required>{{ req.task_description }}</textarea>
+                    <textarea class="form-control" id="correct-task-{{ req.response_id }}" name="task_description" maxlength="{{ task_description_max_length }}" required>{{ req.task_description }}</textarea>
                     <div class="field-hint">Не более {{ task_description_max_length }} символов.</div>
                   </div>
                   <div class="field-card full-width">
                     <label for="correct-justification-{{ req.response_id }}">Обоснование</label>
-                    <textarea id="correct-justification-{{ req.response_id }}" name="justification" maxlength="{{ justification_max_length }}" required>{{ req.justification }}</textarea>
+                    <textarea class="form-control" id="correct-justification-{{ req.response_id }}" name="justification" maxlength="{{ justification_max_length }}" required>{{ req.justification }}</textarea>
                     <div class="field-hint">Не более {{ justification_max_length }} символов.</div>
                   </div>
                   <div class="field-card full-width">
@@ -525,12 +390,12 @@
                       data-systems-total-max-length="{{ systems_total_max_length }}"
                     >
                       <div class="systems-token-list" data-systems-token-list></div>
-                      <input id="correct-systems-{{ req.response_id }}" type="text" class="systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" maxlength="{{ systems_total_max_length }}" />
+                      <input id="correct-systems-{{ req.response_id }}" type="text" class="form-control systems-token-input" data-systems-input placeholder="Введите АС и нажмите Enter" autocomplete="off" maxlength="{{ systems_total_max_length }}" />
                     </div>
                     <div class="field-hint">До {{ systems_max_count }} АС, не более {{ system_name_max_length }} символов каждая. После ввода одной АС нажмите Enter или Tab. Список можно вставить через |, запятую или точку с запятой.</div>
                   </div>
                 </div>
-                <div class="request-actions"><button type="submit">Сохранить корректировку</button></div>
+                <div class="request-actions"><button class="btn btn-primary" type="submit">Сохранить корректировку</button></div>
               </form>
             </div>
           {% endif %}
@@ -545,7 +410,7 @@
             <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
             <input type="hidden" name="response_id" value="{{ req.response_id }}" />
             <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
-            <button type="submit" class="cancel">Перевести в статус "Отменена"</button>
+            <button type="submit" class="btn btn-danger cancel">Перевести в статус "Отменена"</button>
           </form>
         {% endif %}
 
@@ -561,7 +426,8 @@
       </details>
     {% endfor %}
   {% endif %}
-  <script>
+{% endblock %}
+{% block scripts %}<script>
     {% include "includes/date_time_controls.js" %}
 
     function splitSystemsInput(value) {
@@ -712,7 +578,7 @@
       });
     }
 
-    document.querySelectorAll(".tooltip").forEach((tooltip) => {
+    document.querySelectorAll(".help-tooltip").forEach((tooltip) => {
       tooltip.addEventListener("mouseenter", () => alignTooltip(tooltip));
       tooltip.addEventListener("focus", () => alignTooltip(tooltip));
     });
@@ -820,6 +686,4 @@
         });
       });
     });
-  </script>
-</body>
-</html>
+  </script>{% endblock %}

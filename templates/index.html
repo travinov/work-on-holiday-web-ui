@@ -1,121 +1,43 @@
-<!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Кабинет администратора</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; background: #f8fafc; }
-    h1 { margin-bottom: 8px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
-    .card { border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; background: #fff; }
-    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .stats { display: flex; gap: 14px; margin: 8px 0 16px; flex-wrap: wrap; }
-    .chip { background: #f3f4f6; padding: 6px 10px; border-radius: 999px; font-size: 13px; }
-    input[type="text"], select, button { padding: 8px 10px; }
-    button { cursor: pointer; border: 1px solid #374151; background: #111827; color: #fff; border-radius: 8px; }
-    button.secondary { background: #fff; color: #111827; }
-    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
-    .hamburger-menu { position: relative; }
-    .hamburger-menu summary { list-style: none; cursor: pointer; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; padding: 8px 12px; font-size: 20px; line-height: 1; user-select: none; }
-    .hamburger-menu summary::-webkit-details-marker { display: none; }
-    .hamburger-panel { position: absolute; right: 0; top: calc(100% + 8px); min-width: 240px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px; box-shadow: 0 14px 32px rgba(15, 23, 42, .16); padding: 10px; z-index: 20; display: grid; gap: 8px; }
-    .hamburger-link { display: block; padding: 8px 10px; border-radius: 8px; color: #1f2937; text-decoration: none; }
-    .hamburger-link:hover { background: #f3f4f6; }
-    .msg { padding: 10px 12px; border-radius: 8px; margin: 12px 0 16px; }
-    .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
-    .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
-    .msg.info { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
-    .table-wrap { width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
-    table { width: 100%; min-width: 620px; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 8px 6px; }
-    a { color: #1d4ed8; text-decoration: none; }
-    .field-group { display: inline-flex; align-items: center; gap: 8px; }
-    .tooltip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 999px; border: 1px solid #94a3b8; color: #475569; font-size: 12px; font-weight: 700; cursor: help; background: #fff; }
-    .tooltip .tooltip-text { visibility: hidden; opacity: 0; transition: opacity .15s ease; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); min-width: 220px; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: #111827; color: #fff; font-size: 12px; line-height: 1.35; text-align: left; z-index: 10; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); }
-    .tooltip:hover .tooltip-text, .tooltip:focus .tooltip-text { visibility: visible; opacity: 1; }
-    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-    @media (max-width: 720px) {
-      body { margin: 16px; }
-      .grid { grid-template-columns: minmax(0, 1fr); }
-      .card { min-width: 0; padding: 14px; }
-      .row { align-items: stretch; }
-      .row > input[type="text"], .row > select, .row > button { width: 100%; min-height: 42px; }
-    }
-
-    {% include "includes/date_time_controls.css" %}
-  </style>
-</head>
-<body>
-  <div class="topbar">
-    <h1>Кабинет администратора</h1>
-    <details class="hamburger-menu" data-hamburger-menu="true">
-      <summary aria-label="Открыть меню">☰</summary>
-      <nav class="hamburger-panel">
-        <a class="hamburger-link" href="/">Главная</a>
-        <a class="hamburger-link" href="/admin">Кабинет администратора</a>
-        {% if admin_session.is_superuser %}<a class="hamburger-link" href="/manager">Задачи команды — вся организация</a>{% endif %}
-        <a class="hamburger-link" href="/employee">Кабинет сотрудника</a>
-        <a class="hamburger-link" href="/employee?admin_mode=1">Кабинет сотрудника: админ</a>
-        <a class="hamburger-link" href="/admin/users">Пользователи</a>
-        <a class="hamburger-link" href="/admin/requests">Заявки</a>
-        <a class="hamburger-link" href="/admin/test-data">Тестовые данные</a>
-      </nav>
-    </details>
-  </div>
-  <div class="stats">
-    <div class="chip">Записей в БД: {{ stats.responses }}</div>
-    <div class="chip">Сотрудников: {{ stats.employees }}</div>
-    <div class="chip">Заявок со статусами: {{ stats.managed_requests }}</div>
-    <div class="chip">Закрытых периодов: {{ stats.period_locks }}</div>
+{% extends "base.html" %}
+{% block title %}Кабинет администратора{% endblock %}
+{% block page_id %}index{% endblock %}
+{% block heading %}Кабинет администратора{% endblock %}
+{% block description %}Отчёты, закрытие периодов и управление работой сотрудников.{% endblock %}
+{% block content %}
+<div class="stats">
+    <div class="card metric-card"><span>Записей в базе</span><strong>{{ stats.responses }}</strong></div>
+    <div class="card metric-card"><span>Сотрудников</span><strong>{{ stats.employees }}</strong></div>
+    <div class="card metric-card"><span>Заявок со статусами</span><strong>{{ stats.managed_requests }}</strong></div>
+    <div class="card metric-card"><span>Закрытых периодов</span><strong>{{ stats.period_locks }}</strong></div>
   </div>
 
-  {% if msg %}
-    <div class="msg {{ level }}" role="status" aria-live="polite">{{ msg }}</div>
-  {% endif %}
 
-  <div class="card" style="margin-bottom: 16px;">
-    <h3>Администратор</h3>
-    <div class="row">
-      <span class="chip">{{ admin_session.full_name }}</span>
-      {% if is_superuser %}<span class="chip">Суперпользователь</span>{% else %}<span class="chip">Администратор</span>{% endif %}
-      <a href="/admin/users" style="font-weight: 600;">Пользователи</a>
-      <a href="/admin/requests" style="font-weight: 600;">Заявки</a>
-      <a href="/admin/test-data" style="font-weight: 600;">Тестовые данные</a>
-      <a href="/employee?admin_mode=1" style="font-weight: 600;">Кабинет сотрудника</a>
-      {% if is_superuser %}
-        <a href="/manager" style="font-weight: 600;">Задачи команды — вся организация</a>
-        <form action="/superuser/logout" method="post">
-          <button type="submit" class="secondary">Выйти из суперпользователя</button>
-        </form>
-      {% endif %}
-    </div>
-  </div>
 
-  <div class="grid">
-    <div class="card">
+
+
+  <div class="dashboard-grid">
+    <div class="card app-card">
       <h3>Закрыть неделю / период</h3>
       <form action="/admin/locks/create" method="post" data-week-form data-lock-preview-form>
-        <div class="row">
+        <div class="action-row">
           <label class="sr-only" for="lock-type">Тип закрытия периода</label>
-          <select id="lock-type" name="lock_type" required>
+          <select class="form-select" id="lock-type" name="lock_type" required>
             <option value="planning">Закрыть прием заявок</option>
             <option value="actual">Закрыть ввод факта</option>
           </select>
           <label for="lock-week-anchor">Дата внутри недели:</label>
-          <input type="hidden" data-week-anchor value="{{ default_week_from }}" /><input id="lock-week-anchor" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+          <input type="hidden" data-week-anchor value="{{ default_week_from }}" /><input class="form-control" id="lock-week-anchor" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
           <input type="hidden" name="date_from" value="{{ default_week_from }}" />
           <input type="hidden" name="date_to" value="{{ default_week_to }}" />
-          <input type="text" name="comment" placeholder="Комментарий" maxlength="{{ period_lock_comment_max_length }}" title="Не более {{ period_lock_comment_max_length }} символов" aria-label="Комментарий к закрытию периода" />
-          <button type="submit">Закрыть</button>
+          <input class="form-control" type="text" name="comment" placeholder="Комментарий" maxlength="{{ period_lock_comment_max_length }}" title="Не более {{ period_lock_comment_max_length }} символов" aria-label="Комментарий к закрытию периода" />
+          <button class="btn btn-primary" type="submit">Закрыть</button>
         </div>
         <div class="meta" data-week-label aria-live="polite"></div>
         <div class="meta" data-lock-preview aria-live="polite"></div>
       </form>
       {% if period_locks %}
         <div class="table-wrap" role="region" aria-label="Закрытые периоды" tabindex="0">
-        <table style="margin-top: 12px;">
+        <table class="table table-vcenter" style="margin-top: 12px;">
           <thead><tr><th>Тип</th><th>Период</th><th>Кем</th><th>Действие</th></tr></thead>
           <tbody>
             {% for lock in period_locks %}
@@ -127,7 +49,7 @@
                   {% if lock.lock_type == 'planning' %}
                     <form action="/admin/locks/release-planning" method="post">
                       <input type="hidden" name="lock_id" value="{{ lock.lock_id }}" />
-                      <button type="submit" class="secondary">Снять прием</button>
+                      <button type="submit" class="btn btn-outline-secondary secondary">Снять прием</button>
                     </form>
                   {% else %}
                     —
@@ -141,25 +63,25 @@
       {% endif %}
     </div>
 
-    <div class="card">
+    <div class="card app-card">
       <h3>Общий Excel с отчетами 1-4 за выбранную неделю</h3>
       <form action="/generate/full" method="post" data-week-form>
-        <div class="row">
-          <div class="field-group"><label for="report-week-anchor">Дата внутри недели:</label><span class="tooltip" tabindex="0">?<span class="tooltip-text">Выберите любую дату. Система сформирует отчет за неделю с понедельника по воскресенье.</span></span></div>
-          <input type="hidden" data-week-anchor value="{{ default_week_from }}" /><input id="report-week-anchor" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
+        <div class="action-row">
+          <div class="field-group"><label for="report-week-anchor">Дата внутри недели:</label><span class="help-tooltip" tabindex="0">?<span class="tooltip-text">Выберите любую дату. Система сформирует отчет за неделю с понедельника по воскресенье.</span></span></div>
+          <input type="hidden" data-week-anchor value="{{ default_week_from }}" /><input class="form-control" id="report-week-anchor" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" required />
           <input type="hidden" name="date_from" value="{{ default_week_from }}" />
           <input type="hidden" name="date_to" value="{{ default_week_to }}" />
-          <button type="submit">Сформировать общий Excel</button>
+          <button class="btn btn-primary" type="submit">Сформировать общий Excel</button>
         </div>
         <div class="meta" data-week-label aria-live="polite"></div>
       </form>
     </div>
   </div>
 
-  <div class="card" style="margin-top: 16px;">
+  <div class="card app-card" style="margin-top: 16px;">
     <h3>Готовые файлы отчетов</h3>
     <div class="table-wrap" role="region" aria-label="Готовые отчеты" tabindex="0">
-    <table>
+    <table class="table table-vcenter">
       <thead>
         <tr><th>Файл</th><th>Изменен</th><th>Действие</th></tr>
       </thead>
@@ -170,13 +92,13 @@
             <td>{{ item.modified }}</td>
             <td><a href="/download/{{ item.name }}">Скачать</a></td>
           </tr>
-        {% endfor %}
+        {% else %}<tr><td colspan="3" class="empty-state">Готовых отчётов пока нет. Сформируйте отчёт за нужную неделю.</td></tr>{% endfor %}
       </tbody>
     </table>
     </div>
   </div>
-
-  <script>
+{% endblock %}
+{% block scripts %}<script>
     {% include "includes/date_time_controls.js" %}
 
     function mondaySunday(anchorIso) {
@@ -234,6 +156,4 @@
       });
       updateWeek();
     });
-  </script>
-</body>
-</html>
+  </script>{% endblock %}

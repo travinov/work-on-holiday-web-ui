@@ -1,0 +1,12 @@
+{
+  "package": "@tabler/core",
+  "version": "1.5.1",
+  "source": "https://registry.npmjs.org/@tabler/core/-/core-1.5.1.tgz",
+  "upstream_integrity": "sha512-PI9rJq4H4lBh53YP/J+m5Uz6lqVQbsGPmWCMN34IP4KQQ/wy28YMO6a3Eiz1cQHdFFr+3MlU3yYhXdzvFGJfqw==",
+  "changes": "Removed sourceMappingURL comments; CSS and JS otherwise unchanged. System fonts; no external assets.",
+  "sha256": {
+    "LICENSE": "4f88a82d13be3c5c63a12c5631eae914aa4381b6dc17641bf1ab85f3f8f6c8a5",
+    "tabler.min.css": "f30225b371c49e84afe1411c51597acf05ec7ae9e0b8336e49f76c4ed2e87987",
+    "tabler.min.js": "ecc6bea1588b44537bf108724c27fb7d9014597c819212e13096629333c31f53"
+  }
+}

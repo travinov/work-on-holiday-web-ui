@@ -48,7 +48,7 @@ def register_routes(ui):
 
     def preview(request, conn, identifier, actor):
         row = draft(conn, identifier, actor)
-        plan = directory.plan_import(conn, json.loads(row['payload']), json.loads(row['bindings']))
+        plan = directory.plan_import(conn, json.loads(row['payload']))
         return render(request, 'roster.html', draft_id=identifier, plan=plan, people=directory.employees(conn))
 
     @app.get('/admin/roster')
@@ -89,19 +89,8 @@ def register_routes(ui):
         with ui.get_db_connection() as conn:
             conn.execute("DELETE FROM app_roster_draft WHERE created_at <= datetime('now','-1 day')")
             conn.execute('INSERT INTO app_roster_draft(id,actor,payload,bindings,fingerprint) VALUES (?,?,?,?,?)',
-                         (identifier, actor, json.dumps(rows), '{}', directory.fingerprint(conn)))
-            return preview(request, conn, identifier, actor)
-
-    @app.post('/admin/roster/{identifier}/resolve')
-    async def roster_resolve(request: Request, identifier: str):
-        actor = admin(request)
-        form = await request.form()
-        with ui.get_db_connection() as conn:
-            row = draft(conn, identifier, actor)
-            bindings = json.loads(row['bindings'])
-            bindings.update({k[5:]: str(v) for k, v in form.items() if k.startswith('bind:') and v})
-            conn.execute('UPDATE app_roster_draft SET bindings=?,fingerprint=? WHERE id=?',
-                         (json.dumps(bindings), directory.fingerprint(conn), identifier))
+                         (identifier, actor, json.dumps(rows), json.dumps({'matching': 'email-name-skip-v1'}),
+                          directory.fingerprint(conn)))
             return preview(request, conn, identifier, actor)
 
     @app.post('/admin/roster/{identifier}/apply')
@@ -112,12 +101,17 @@ def register_routes(ui):
             row = draft(conn, identifier, actor)
             if row['fingerprint'] != directory.fingerprint(conn):
                 raise HTTPException(409, 'Справочник изменился после предпросмотра. Загрузите реестр заново.')
-            plan = directory.plan_import(conn, json.loads(row['payload']), json.loads(row['bindings']))
-            if plan['errors'] or plan['unresolved']:
+            if json.loads(row['bindings']) != {'matching': 'email-name-skip-v1'}:
+                raise HTTPException(409, 'Правила сопоставления изменились. Загрузите реестр заново.')
+            plan = directory.plan_import(conn, json.loads(row['payload']))
+            if plan['errors']:
                 raise HTTPException(422, 'Устраните ошибки в предпросмотре')
+            if not plan['changes']:
+                raise HTTPException(422, 'Нет записей для применения. Проверьте пропущенные строки.')
             directory.apply_import(conn, plan)
             conn.execute('DELETE FROM app_roster_draft WHERE id=?', (identifier,))
-        return ui.redirect_with_message('/admin/users', f"Реестр применён: {len(plan['changes'])} сотрудников", 'success')
+        message = f"Реестр применён: {len(plan['changes'])} сотрудников. Пропущено: {len(plan['skipped'])}."
+        return ui.redirect_with_message('/admin/users', message, 'success')
 
     def read_filter(request, conn, owner, *, remember=True):
         query = request.query_params

@@ -358,10 +358,8 @@ class TeamTests(unittest.TestCase):
             ensure_app_tables(conn)
             ensure_app_tables(conn)
             plan = d.plan_import(conn, [['Старый Сотрудник','legacy@example.org','root@example.org']])
-            self.assertEqual(len(plan['unresolved']), 1)
-            with self.assertRaises(ValueError):
-                d.apply_import(conn, plan)
-            plan = d.plan_import(conn, [['Старый Сотрудник','legacy@example.org','root@example.org']], {'legacy@example.org':legacy})
+            self.assertEqual(plan['skipped'], [])
+            self.assertEqual(plan['changes'][0]['key'], legacy)
             d.apply_import(conn, plan)
             self.assertEqual(ui.get_employee_profile(conn, legacy)['is_admin'], 1)
             self.assertEqual(ui.get_employee_token_record(conn, legacy)['token_hash'], ui.hash_employee_token('secret'))
@@ -505,16 +503,17 @@ class TeamTests(unittest.TestCase):
             row=conn.execute("SELECT status FROM app_request_state WHERE response_id=1").fetchone()
             self.assertTrue(row is None or row[0]!='cancelled')
 
-    def test_resolve_preview_explicit_legacy_binding(self):
+    def test_preview_automatically_links_legacy_name_and_preserves_token(self):
         with ui.get_db_connection() as conn:
             legacy=ui.register_employee_directory_entry(conn,'Старый Сотрудник')['employee_key']
             ui.upsert_employee_token(conn,legacy,'legacy-token')
         self.admin()
         content=(';'.join(d.HEADERS)+'\nСтарый Сотрудник;legacy@example.org;root@example.org').encode()
         response=self.client.post('/admin/roster/preview',files={'file':('x.csv',content)})
-        identifier=re.search(r'/admin/roster/([^/]+)/resolve',response.text)[1]
-        self.assertEqual(self.client.post(f'/admin/roster/{identifier}/apply').status_code,422)
-        response=self.client.post(f'/admin/roster/{identifier}/resolve',data={'bind:legacy@example.org':legacy})
+        identifier=re.search(r'/admin/roster/([^/]+)/apply',response.text)[1]
+        self.assertIn('ФИО — почта будет заполнена', response.text)
+        with ui.get_db_connection() as conn:
+            self.assertEqual(d.employees(conn)[legacy]['email'], '')
         self.assertIn('Применить записи (1)',response.text)
         self.assertEqual(self.client.post(f'/admin/roster/{identifier}/apply',follow_redirects=False).status_code,303)
         with ui.get_db_connection() as conn:
@@ -576,7 +575,7 @@ class TeamTests(unittest.TestCase):
     def test_legacy_rename_cannot_be_overwritten_by_guest(self):
         with ui.get_db_connection() as conn:
             key=ui.register_employee_directory_entry(conn,'Прежнее Имя')['employee_key']
-            d.apply_import(conn,d.plan_import(conn,[['Прежнее Имя','rename@example.org','']],{'rename@example.org':key}))
+            d.apply_import(conn,d.plan_import(conn,[['Прежнее Имя','rename@example.org','']]))
             d.apply_import(conn,d.plan_import(conn,[['Новое Имя','rename@example.org','']]))
         self.client.post('/employee/login',data={'full_name':'Прежнее Имя'})
         with ui.get_db_connection() as conn:

@@ -1,31 +1,31 @@
-{% extends "team_base.html" %}{% block content %}<h1>Задачи команды</h1>
+{% extends "team_base.html" %}{% block content %}
 {% if is_superuser %}
-<p class="notice">Вы — руководитель всей организации. Сотрудники без указанного руководителя подчиняются вам напрямую. Охват «Все уровни подчинения» включает всех сотрудников.</p>
-<section><details id="organization"><summary>Оргструктура · сотрудников: {{ organization|length }}</summary>
+<p class="alert alert-info">Вы — руководитель всей организации. Сотрудники без указанного руководителя подчиняются вам напрямую. Охват «Все уровни подчинения» включает всех сотрудников.</p>
+<section class="card app-card"><details id="organization"><summary>Оргструктура · сотрудников: {{ organization|length }}</summary>
 <p class="muted">На вершине — Суперпользователь. Здесь показаны все сотрудники и их непосредственные руководители, независимо от фильтров заявок.</p>
-<div class="table-wrap"><table><thead><tr><th>Сотрудник</th><th>Рабочая почта</th><th>Руководитель</th></tr></thead><tbody>
+<div class="table-wrap"><table class="table table-vcenter"><thead><tr><th>Сотрудник</th><th>Рабочая почта</th><th>Руководитель</th></tr></thead><tbody>
 {% for person in organization %}<tr><td>{{ person.name }}</td><td>{{ person.email or 'Не указана' }}</td><td>{{ person.manager_name }}</td></tr>{% else %}<tr><td colspan="3">Сотрудников пока нет. Загрузите реестр через раздел «Пользователи».</td></tr>{% endfor %}
 </tbody></table></div></details></section>
-{% else %}<p class="muted">Просмотр заявок сотрудников. Свои заявки создавайте на экране «Мои задачи».</p>{% endif %}
-<div class="row filter-actions"><button type="button" id="open-save-filter">Сохранить фильтр</button><button type="button" class="secondary" id="open-apply-filter">Применить фильтр</button></div>
-<section><form action="/manager" method="get" id="filters"><input type="hidden" name="apply" value="1"><div class="grid">
-<label>Охват<select name="scope"><option value="direct" {% if filters.scope == 'direct' %}selected{% endif %}>Прямые подчинённые</option><option value="all" {% if filters.scope == 'all' %}selected{% endif %}>Все уровни подчинения</option></select></label>
-<label>Период<select name="period" id="period"><option value="current" {% if filters.period == 'current' %}selected{% endif %}>Текущая неделя</option><option value="week" {% if filters.period == 'week' %}selected{% endif %}>Выбранная неделя</option><option value="range" {% if filters.period == 'range' %}selected{% endif %}>Диапазон дат</option></select></label>
-<label>С даты<input type="date" name="date_from" value="{{ date_from }}" required></label><label>По дату<input type="date" name="date_to" value="{{ date_to }}" required></label>
-<label>Фамилия сотрудника<input name="surname" value="{{ filters.surname }}" placeholder="Поиск по ФИО"></label><label>Текст задачи<input name="text" value="{{ filters.text }}" placeholder="Слова из описания"></label></div>
-<fieldset><legend>Сотрудники — без выбора показывается вся доступная команда</legend><label>Найти в списке<input id="find-person" type="search" placeholder="Начните вводить фамилию"></label>
-{% for person in team %}<label class="person"><input type="checkbox" name="employees" value="{{ person.key }}" {% if person.key in filters.employees %}checked{% endif %}>{{ person.name }} · {{ person.email }}</label>{% endfor %}</fieldset>
-{% if stale %}<p class="notice">Часть сохранённого выбора больше не входит в доступную команду. Эти сотрудники и их задачи не показаны. Примените фильтры, чтобы обновить выбор.</p>{% endif %}
-<div class="row"><button>Показать задачи</button><button class="secondary" name="step" value="-1">← Предыдущая неделя</button><button class="secondary" name="current" value="1">Текущая неделя</button><button class="secondary" name="step" value="1">Следующая неделя →</button></div>
+{% else %}<p class="muted">Просмотр заявок сотрудников. Свои заявки создавайте в кабинете сотрудника.</p>{% endif %}
+<div class="action-row filter-actions"><button class="btn btn-primary" type="button" id="open-save-filter">Сохранить фильтр</button><button type="button" class="btn btn-outline-secondary secondary" id="open-apply-filter">Применить фильтр</button></div>
+<section class="card app-card"><form action="/manager" method="get" id="filters"><input type="hidden" name="apply" value="1"><div class="form-grid manager-filter-grid">
+<label>Охват<select class="form-select" name="scope"><option value="direct" {% if filters.scope == 'direct' %}selected{% endif %}>Прямые подчинённые</option><option value="all" {% if filters.scope == 'all' %}selected{% endif %}>Все уровни подчинения</option></select></label>
+<label>Период<select class="form-select" name="period" id="period"><option value="current" {% if filters.period == 'current' %}selected{% endif %}>Текущая неделя</option><option value="week" {% if filters.period == 'week' %}selected{% endif %}>Выбранная неделя</option><option value="range" {% if filters.period == 'range' %}selected{% endif %}>Диапазон дат</option></select></label>
+<label>С даты<input class="form-control" type="date" name="date_from" value="{{ date_from }}" required></label><label>По дату<input class="form-control" type="date" name="date_to" value="{{ date_to }}" required></label>
+<label>Фамилия сотрудника<input class="form-control" name="surname" value="{{ filters.surname }}" placeholder="Поиск по ФИО"></label><label>Текст задачи<input class="form-control" name="text" value="{{ filters.text }}" placeholder="Слова из описания"></label></div>
+<fieldset class="people-picker"><legend>Сотрудники</legend><p class="text-secondary">Без выбора показывается вся доступная команда.</p><label class="people-search">Найти в списке<input class="form-control" id="find-person" type="search" placeholder="Начните вводить фамилию"></label>
+{% for person in team %}<label class="person"><input class="form-check-input" type="checkbox" name="employees" value="{{ person.key }}" {% if person.key in filters.employees %}checked{% endif %}>{{ person.name }} · {{ person.email }}</label>{% endfor %}</fieldset>
+{% if stale %}<p class="alert alert-info">Часть сохранённого выбора больше не входит в доступную команду. Эти сотрудники и их задачи не показаны. Примените фильтры, чтобы обновить выбор.</p>{% endif %}
+<div class="action-row"><button class="btn btn-primary">Показать задачи</button><button class="btn btn-outline-secondary secondary" name="step" value="-1">← Предыдущая неделя</button><button class="btn btn-outline-secondary secondary" name="current" value="1">Текущая неделя</button><button class="btn btn-outline-secondary secondary" name="step" value="1">Следующая неделя →</button></div>
 <p class="muted">«Текущая неделя» обновляется по календарю. Для выбранной недели используется понедельник даты «С даты»; дата «По» применяется только к диапазону.</p>
 </form></section>
 <dialog id="save-filter-dialog" aria-labelledby="save-filter-title">
   <h2 id="save-filter-title">Сохранить фильтр</h2>
   <form action="/manager/filters" method="post" id="save-filter-form">
-    <label>Название фильтра<input name="name" maxlength="80" required autofocus placeholder="Например, еженедельный обзор"></label>
+    <label>Название фильтра<input class="form-control" name="name" maxlength="80" required autofocus placeholder="Например, еженедельный обзор"></label>
     <div id="save-filter-values"></div>
     <p class="muted">Сохранятся текущие настройки формы. Повторное название обновит существующий фильтр.</p>
-    <div class="row"><button>Сохранить</button><button type="button" class="secondary" data-close-dialog>Отмена</button></div>
+    <div class="action-row"><button class="btn btn-primary">Сохранить</button><button type="button" class="btn btn-outline-secondary secondary" data-close-dialog>Отмена</button></div>
   </form>
 </dialog>
 <dialog id="apply-filter-dialog" aria-labelledby="apply-filter-title">
@@ -35,22 +35,22 @@
   <div class="saved-filter-list" role="radiogroup" aria-labelledby="saved-filter-hint">
     {% for name in saved %}<div class="saved-filter-row">
       <label class="saved-filter-choice">
-        <input type="radio" name="saved" value="{{ name }}" form="apply-saved-filter-form" required>
+        <input class="form-check-input" type="radio" name="saved" value="{{ name }}" form="apply-saved-filter-form" required>
         <span>{{ name }}</span>
         <svg class="selection-check" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
       </label>
-      <form action="/manager/filters/delete" method="post"><input type="hidden" name="name" value="{{ name }}"><button class="delete-filter" aria-label="Удалить фильтр {{ name }}" title="Удалить фильтр">
+      <form action="/manager/filters/delete" method="post"><input type="hidden" name="name" value="{{ name }}"><button class="btn btn-outline-secondary delete-filter" aria-label="Удалить фильтр {{ name }}" title="Удалить фильтр">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg>
       </button></form>
     </div>{% endfor %}
   </div>
-  <div class="dialog-actions"><button type="button" class="secondary" data-close-dialog>Отмена</button><button form="apply-saved-filter-form" id="apply-selected-filter" disabled>Применить</button></div>
-  {% else %}<p class="muted">Сохранённых фильтров пока нет. Настройте условия и нажмите «Сохранить фильтр».</p><button type="button" class="secondary" data-close-dialog autofocus>Закрыть</button>{% endif %}
+  <div class="dialog-actions"><button type="button" class="btn btn-outline-secondary secondary" data-close-dialog>Отмена</button><button class="btn btn-primary" form="apply-saved-filter-form" id="apply-selected-filter" disabled>Применить</button></div>
+  {% else %}<p class="muted">Сохранённых фильтров пока нет. Настройте условия и нажмите «Сохранить фильтр».</p><button type="button" class="btn btn-outline-secondary secondary" data-close-dialog autofocus>Закрыть</button>{% endif %}
 </dialog>
-<section><div class="row"><h2>Задачи за {{ date_from }} — {{ date_to }} · {{ tasks|length }}</h2><a class="export-button" id="request-export" href="{{ export_url }}">Выгрузить в Excel</a></div><p class="muted">В Excel попадёт показанный список. После изменения фильтров нажмите «Показать задачи».</p><div class="table-wrap"><table><thead><tr><th>Сотрудник</th><th>Дата и время</th><th>Задача</th><th>Статус</th></tr></thead><tbody>
-{% set group = namespace(name='') %}{% for task in tasks %}{% if filters.scope == 'all' and group.name != task.manager_name %}{% set group.name = task.manager_name %}<tr><th colspan="4">Руководитель: {{ group.name }}</th></tr>{% endif %}<tr><td>{{ task.full_name }}</td><td>{{ task.planned_work_date_ru }}<br>{{ task.planned_work_time }}</td><td><a href="/manager/requests/{{ task.response_id }}">{{ task.task_description or 'Без описания' }}</a></td><td>{{ task.status_label }}</td></tr>{% else %}<tr><td colspan="4">Задач по выбранным фильтрам нет.</td></tr>{% endfor %}</tbody></table></div></section>
-<section><h2>Сотрудники без задач в периоде · {{ without|length }}</h2><p class="muted">Отсутствие заявок не означает, что сотрудник не выходил на работу. Поиск по тексту задач не влияет на этот список; отменённые заявки тоже учитываются как существующие.</p>{% for person in without %}<p>{{ person.name }} · {{ person.email }}</p>{% else %}<p>Нет сотрудников без задач в выбранной группе.</p>{% endfor %}</section>
-<script>document.getElementById('find-person').addEventListener('input',function(){const term=this.value.toLocaleLowerCase();document.querySelectorAll('.person').forEach(row=>row.hidden=!row.textContent.toLocaleLowerCase().includes(term));});
+<section class="card app-card"><div class="action-row"><h2>Задачи за {{ date_from }} — {{ date_to }} · {{ tasks|length }}</h2><a class="btn btn-primary export-button" id="request-export" href="{{ export_url }}">Выгрузить в Excel</a></div><p class="muted">В Excel попадёт показанный список. После изменения фильтров нажмите «Показать задачи».</p><div class="table-wrap"><table class="table table-vcenter"><thead><tr><th>Сотрудник</th><th>Дата и время</th><th>Задача</th><th>Статус</th></tr></thead><tbody>
+{% set group = namespace(name='') %}{% for task in tasks %}{% if filters.scope == 'all' and group.name != task.manager_name %}{% set group.name = task.manager_name %}<tr class="table-group"><th colspan="4">Руководитель: {{ group.name }}</th></tr>{% endif %}<tr><td>{{ task.full_name }}</td><td>{{ task.planned_work_date_ru }}<br>{{ task.planned_work_time }}</td><td><a href="/manager/requests/{{ task.response_id }}">{{ task.task_description or 'Без описания' }}</a></td><td><span class="badge status-badge {{ task.status }}">{{ task.status_label }}</span></td></tr>{% else %}<tr><td colspan="4">Задач по выбранным фильтрам нет.</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="card app-card"><h2>Сотрудники без задач в периоде · {{ without|length }}</h2><p class="muted">Отсутствие заявок не означает, что сотрудник не выходил на работу. Поиск по тексту задач не влияет на этот список; отменённые заявки тоже учитываются как существующие.</p>{% for person in without %}<p>{{ person.name }} · {{ person.email }}</p>{% else %}<p>Нет сотрудников без задач в выбранной группе.</p>{% endfor %}</section>
+{% endblock %}{% block scripts %}<script>document.getElementById('find-person').addEventListener('input',function(){const term=this.value.toLocaleLowerCase();document.querySelectorAll('.person').forEach(row=>row.hidden=!row.textContent.toLocaleLowerCase().includes(term));});
 const filtersForm = document.getElementById('filters');
 const saveDialog = document.getElementById('save-filter-dialog');
 document.getElementById('open-save-filter').addEventListener('click', () => {

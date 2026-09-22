@@ -1,0 +1,5 @@
+{% macro icon(name) -%}<svg class="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="{{ asset_url('icons.svg') }}#{{ name }}"/></svg>{%- endmacro %}
+{% macro nav_link(url, label, symbol, active=false) -%}
+<li class="nav-item{% if active %} active{% endif %}"><a class="nav-link" href="{{ url }}"{% if active %} aria-current="page"{% endif %}><span class="nav-link-icon">{{ icon(symbol) }}</span><span class="nav-link-title">{{ label }}</span></a></li>
+{%- endmacro %}
+{% macro status_badge(status, label) -%}<span class="badge status-badge {{ status }}">{{ label }}</span>{%- endmacro %}

@@ -1,106 +1,18 @@
-<!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Администратор - Заявки</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; background: #f8fafc; }
-    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
-    .hamburger-menu { position: relative; }
-    .hamburger-menu summary { list-style: none; cursor: pointer; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; padding: 8px 12px; font-size: 20px; line-height: 1; user-select: none; }
-    .hamburger-menu summary::-webkit-details-marker { display: none; }
-    .hamburger-panel { position: absolute; right: 0; top: calc(100% + 8px); min-width: 240px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px; box-shadow: 0 14px 32px rgba(15, 23, 42, .16); padding: 10px; z-index: 20; display: grid; gap: 8px; }
-    .hamburger-link { display: block; padding: 8px 10px; border-radius: 8px; color: #1f2937; text-decoration: none; }
-    .hamburger-link:hover { background: #f1f5f9; }
-    .card { background: #fff; border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
-    .table-wrap { width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
-    table { width: 100%; min-width: 1080px; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 8px 6px; vertical-align: top; }
-    .badge { display: inline-block; font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; }
-    .badge.active { background: #eff6ff; color: #1e40af; border-color: #93c5fd; }
-    .badge.in_progress { background: #fff7ed; color: #9a3412; border-color: #fdba74; }
-    .badge.in_fact { background: #f0fdf4; color: #166534; border-color: #86efac; }
-    .badge.completed { background: #ecfdf5; color: #065f46; border-color: #6ee7b7; }
-    .badge.cancelled { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
-    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .status-form { display: grid; gap: 6px; min-width: 180px; }
-    .status-form select, .status-form button { padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; font-size: 13px; }
-    .status-form button { background: #111827; color: #fff; cursor: pointer; }
-    .task-column { width: 300px; }
-    .task-cell { width: 300px; max-width: 300px; }
-    .task-cell-content { display: flex; align-items: center; gap: 8px; min-width: 0; }
-    .task-preview { display: block; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .delete-request-button { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: 1px solid #fecaca; border-radius: 9px; background: #fff; color: #b91c1c; cursor: pointer; }
-    .delete-request-button:hover { background: #fef2f2; border-color: #f87171; }
-    .delete-request-button:focus-visible { outline: 3px solid rgba(239, 68, 68, .24); outline-offset: 2px; }
-    .delete-dialog { width: min(92vw, 500px); border: 0; border-radius: 16px; padding: 0; box-shadow: 0 24px 70px rgba(15, 23, 42, .28); }
-    .delete-dialog::backdrop { background: rgba(15, 23, 42, .52); }
-    .delete-dialog-form { display: grid; gap: 16px; padding: 22px; }
-    .delete-dialog h2 { margin: 0; color: #991b1b; font-size: 22px; }
-    .delete-dialog p { margin: 0; line-height: 1.5; color: #475569; }
-    .delete-challenge { display: grid; gap: 8px; padding: 14px; border: 1px solid #fecaca; border-radius: 12px; background: #fff7f7; }
-    .delete-challenge label { font-weight: 700; color: #7f1d1d; }
-    .delete-challenge input { width: 140px; min-height: 42px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
-    .delete-challenge-error { min-height: 20px; color: #b91c1c; font-size: 13px; font-weight: 700; }
-    .delete-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
-    .delete-dialog-actions button { min-height: 42px; padding: 8px 14px; border-radius: 10px; font: inherit; font-weight: 700; cursor: pointer; }
-    .delete-dialog-actions .secondary { border: 1px solid #cbd5e1; background: #fff; color: #111827; }
-    .delete-dialog-actions .danger { border: 1px solid #991b1b; background: #b91c1c; color: #fff; }
-    .filters { display: grid; grid-template-columns: minmax(220px, 1.3fr) minmax(190px, .8fr) minmax(170px, .7fr); gap: 10px 12px; align-items: end; margin-bottom: 14px; }
-    .filter-field { display: grid; gap: 6px; min-width: 0; }
-    .filter-field label { font-size: 13px; font-weight: 700; color: #475569; }
-    .filter-field input, .filter-field select { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; font: inherit; }
-    .filter-date { max-width: 180px; font-variant-numeric: tabular-nums; }
-    .filter-result { margin: 0 0 10px; color: #64748b; font-size: 13px; }
-    .export-button { display: inline-block; padding: 10px 14px; border-radius: 8px; background: #111827; color: #fff; margin-bottom: 14px; }
-    .export-button:focus-visible { outline: 3px solid #60a5fa; outline-offset: 2px; }
-    .msg { padding: 10px 12px; border-radius: 8px; margin: 12px 0 16px; }
-    .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
-    .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
-    .msg.info { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
-    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-    @media (max-width: 720px) {
-      body { margin: 16px; }
-      .filters { grid-template-columns: minmax(0, 1fr); }
-      .filter-date { max-width: none; }
-      .card { padding: 12px; }
-    }
-    a { color: #1d4ed8; text-decoration: none; }
-  </style>
-</head>
-<body>
-  <div class="topbar">
-    <h1 style="margin: 0;">Заявки</h1>
-    <details class="hamburger-menu" data-hamburger-menu="true">
-      <summary aria-label="Открыть меню">☰</summary>
-      <nav class="hamburger-panel">
-        <a class="hamburger-link" href="/">Главная</a>
-        <a class="hamburger-link" href="/admin">Кабинет администратора</a>
-        {% if admin_session.is_superuser %}<a class="hamburger-link" href="/manager">Задачи команды — вся организация</a>{% endif %}
-        <a class="hamburger-link" href="/employee">Кабинет сотрудника</a>
-        <a class="hamburger-link" href="/employee?admin_mode=1">Кабинет сотрудника: админ</a>
-        <a class="hamburger-link" href="/admin/users">Пользователи</a>
-        <a class="hamburger-link" href="/admin/requests">Заявки</a>
-        <a class="hamburger-link" href="/admin/test-data">Тестовые данные</a>
-      </nav>
-    </details>
-  </div>
-
-  {% if msg %}
-    <div class="msg {{ level }}" role="status" aria-live="polite">{{ msg }}</div>
-  {% endif %}
-
-  <div class="card">
+{% extends "base.html" %}
+{% block title %}Заявки{% endblock %}
+{% block page_id %}admin_requests{% endblock %}
+{% block heading %}Заявки{% endblock %}
+{% block description %}Найдите нужные заявки, проверьте статус и выгрузите выбранный список.{% endblock %}
+{% block content %}
+<div class="card app-card">
     <div class="filters" aria-label="Фильтры заявок">
       <div class="filter-field">
         <label for="request-search">Сотрудник</label>
-        <input id="request-search" type="search" value="{{ filter_name }}" placeholder="Поиск по ФИО" autocomplete="off" maxlength="{{ admin_filter_name_max_length }}" />
+        <input class="form-control" id="request-search" type="search" value="{{ filter_name }}" placeholder="Поиск по ФИО" autocomplete="off" maxlength="{{ admin_filter_name_max_length }}" />
       </div>
       <div class="filter-field">
         <label for="request-status-filter">Статус</label>
-        <select id="request-status-filter">
+        <select class="form-select" id="request-status-filter">
           <option value="" {% if not filter_status %}selected{% endif %}>Все статусы</option>
           <option value="active" {% if filter_status == 'active' %}selected{% endif %}>Заявка подана</option>
           <option value="in_progress" {% if filter_status == 'in_progress' %}selected{% endif %}>Принята в работу</option>
@@ -111,13 +23,13 @@
       </div>
       <div class="filter-field">
         <label for="request-date-filter">Плановая дата</label>
-        <input id="request-date-filter" class="filter-date" type="text" value="{{ filter_date }}" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" maxlength="10" />
+        <input id="request-date-filter" class="form-control filter-date" type="text" value="{{ filter_date }}" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" maxlength="10" />
       </div>
     </div>
     <p class="filter-result" id="request-filter-result" aria-live="polite"></p>
-    <a class="export-button" id="request-export" href="/admin/requests/export?{{ {'filter_name': filter_name, 'filter_status': filter_status, 'filter_date': filter_date}|urlencode }}">Выгрузить в Excel</a>
+    <a class="btn btn-primary export-button" id="request-export" href="/admin/requests/export?{{ {'filter_name': filter_name, 'filter_status': filter_status, 'filter_date': filter_date}|urlencode }}">Выгрузить в Excel</a>
     <div class="table-wrap" role="region" aria-label="Таблица заявок" tabindex="0">
-    <table>
+    <table class="table table-vcenter">
       <thead>
         <tr>
           <th>ФИО</th>
@@ -144,7 +56,7 @@
                 <span class="task-preview">{{ item.task_description or '—' }}</span>
                 <button
                   type="button"
-                  class="delete-request-button"
+                  class="btn btn-outline-danger delete-request-button"
                   data-delete-request
                   data-employee-key="{{ item.employee_key }}"
                   data-response-id="{{ item.response_id }}"
@@ -181,12 +93,12 @@
                 <input type="hidden" name="filter_status" value="{{ filter_status }}" data-request-filter-status />
                 <input type="hidden" name="filter_date" value="{{ filter_date }}" data-request-filter-date />
                 <label class="sr-only" for="request-status-{{ loop.index }}">Статус заявки {{ item.full_name }}</label>
-                <select id="request-status-{{ loop.index }}" name="status">
+                <select class="form-select" id="request-status-{{ loop.index }}" name="status">
                   {% for target in item.allowed_statuses %}
                     <option value="{{ target.value }}" {% if item.status == target.value %}selected{% endif %}>{{ target.label }}</option>
                   {% endfor %}
                 </select>
-                <button type="submit">Сменить статус</button>
+                <button class="btn btn-primary" type="submit">Сменить статус</button>
               </form>
               {% else %}
                 <div class="badge">Доступных переходов нет</div>
@@ -213,16 +125,17 @@
       <input type="hidden" name="filter_date" value="{{ filter_date }}" data-request-filter-date />
       <div class="delete-challenge">
         <label for="delete-challenge-answer">Для подтверждения решите пример: <span id="delete-challenge-text"></span></label>
-        <input id="delete-challenge-answer" name="challenge_answer" type="text" inputmode="numeric" autocomplete="off" maxlength="{{ delete_challenge_answer_max_length }}" pattern="[0-9]+" required />
+        <input class="form-control" id="delete-challenge-answer" name="challenge_answer" type="text" inputmode="numeric" autocomplete="off" maxlength="{{ delete_challenge_answer_max_length }}" pattern="[0-9]+" required />
         <div class="delete-challenge-error" id="delete-challenge-error" aria-live="polite"></div>
       </div>
       <div class="delete-dialog-actions">
-        <button type="button" class="secondary" id="cancel-delete-request">Отмена</button>
-        <button type="submit" class="danger">Удалить</button>
+        <button type="button" class="btn btn-outline-secondary secondary" id="cancel-delete-request">Отмена</button>
+        <button type="submit" class="btn btn-danger danger">Удалить</button>
       </div>
     </form>
   </dialog>
-  <script>
+{% endblock %}
+{% block scripts %}<script>
     const requestSearch = document.querySelector("#request-search");
     const requestStatusFilter = document.querySelector("#request-status-filter");
     const requestDateFilter = document.querySelector("#request-date-filter");
@@ -335,6 +248,4 @@
       }
     });
     applyRequestFilters(false);
-  </script>
-</body>
-</html>
+  </script>{% endblock %}

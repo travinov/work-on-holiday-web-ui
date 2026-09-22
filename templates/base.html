@@ -1,0 +1,68 @@
+{% from "includes/ui.html" import icon, nav_link with context %}
+<!doctype html>
+<html lang="ru" data-bs-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Работа в выходные{% endblock %} · Work on Holiday</title>
+  <link rel="icon" type="image/svg+xml" href="{{ asset_url('favicon.svg') }}">
+  <link rel="stylesheet" href="{{ asset_url('vendor/tabler-1.5.1/tabler.min.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('css/app.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('css/date-time.css') }}">
+</head>
+<body class="app" data-page="{% block page_id %}default{% endblock %}">
+<a class="skip-link" href="#main-content">Перейти к содержимому</a>
+<div class="page">
+  <aside class="navbar navbar-vertical navbar-expand-lg app-sidebar" aria-label="Основная навигация">
+    <div class="container-fluid">
+      <a class="navbar-brand app-brand" href="/" aria-label="Работа в выходные — главная">{{ icon('calendar') }}<span>Работа<br>в выходные</span></a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#app-navigation" aria-controls="app-navigation" aria-expanded="false" aria-label="Открыть меню" data-hamburger-menu="true">{{ icon('menu') }}</button>
+      <div class="collapse navbar-collapse" id="app-navigation">
+        <div class="nav-section-label">Рабочее пространство</div>
+        <ul class="navbar-nav">
+          {{ nav_link('/', 'Главная', 'home', ui_nav.path == '/') }}
+          {{ nav_link('/employee', 'Кабинет сотрудника', 'briefcase', ui_nav.path == '/employee' and not ui_nav.admin_mode) }}
+          {% if ui_nav.manager %}{{ nav_link('/manager', 'Задачи команды', 'team', ui_nav.path.startswith('/manager')) }}{% endif %}
+        </ul>
+        {% if ui_nav.admin %}
+        <div class="nav-section-label">Управление</div>
+        <ul class="navbar-nav">
+          {{ nav_link('/admin', 'Кабинет администратора', 'dashboard', ui_nav.path == '/admin') }}
+          {{ nav_link('/admin/requests', 'Заявки', 'list', ui_nav.path == '/admin/requests') }}
+          {{ nav_link('/admin/users', 'Пользователи', 'users', ui_nav.path == '/admin/users') }}
+          {{ nav_link('/admin/roster', 'Импорт оргструктуры', 'upload', ui_nav.path.startswith('/admin/roster')) }}
+          {{ nav_link('/employee?admin_mode=1', 'Заявки сотрудника', 'edit', ui_nav.path == '/employee' and ui_nav.admin_mode) }}
+          {{ nav_link('/admin/test-data', 'Тестовые данные', 'flask', ui_nav.path == '/admin/test-data') }}
+        </ul>
+        {% endif %}
+        <div class="sidebar-foot"><span class="status-dot bg-green"></span> Work on Holiday</div>
+      </div>
+    </div>
+  </aside>
+  <div class="page-wrapper">
+    <header class="app-topbar">
+      <span class="app-topbar-label">Планирование и учёт работы</span>
+      <div class="account-menu">
+        <span class="avatar avatar-sm bg-blue-lt">{{ icon('user') }}</span>
+        <div class="account-info"><strong>{{ ui_nav.name }}</strong><span>{{ ui_nav.role }}</span></div>
+        {% if ui_nav.authenticated %}<form action="{{ '/superuser/logout' if ui_nav.superuser else '/employee/logout' }}" method="post"><button type="submit" class="btn btn-icon btn-ghost-secondary" aria-label="{{ 'Выйти из суперпользователя' if ui_nav.superuser else 'Выйти' }}" title="Выйти">{{ icon('logout') }}</button></form>{% endif %}
+      </div>
+    </header>
+    <main class="page-body" id="main-content" tabindex="-1">
+      <div class="container-xl app-container">
+        <div class="page-header">
+          <div class="page-pretitle">{% block pretitle %}{{ ui_nav.role }}{% endblock %}</div>
+          <div class="page-heading"><div><h1 class="page-title">{% block heading %}Работа в выходные{% endblock %}</h1><p class="page-description">{% block description %}{% endblock %}</p></div><div class="page-actions">{% block page_actions %}{% endblock %}</div></div>
+        </div>
+        {% if msg %}<div class="alert {{ 'alert-success' if level == 'success' else 'alert-danger' if level in ['error', 'token-warning'] else 'alert-info' }}" role="status" aria-live="polite">{{ msg }}</div>{% endif %}
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+    <footer class="app-footer">Work on Holiday <span>План · Факт · Отчёт</span></footer>
+  </div>
+</div>
+<script src="{{ asset_url('vendor/tabler-1.5.1/tabler.min.js') }}"></script>
+<script src="{{ asset_url('js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

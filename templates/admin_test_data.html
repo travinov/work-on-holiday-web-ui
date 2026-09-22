@@ -1,89 +1,27 @@
-<!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Администратор - Тестовые данные</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; background: #f8fafc; }
-    h1 { margin: 0; }
-    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
-    .hamburger-menu { position: relative; }
-    .hamburger-menu summary { list-style: none; cursor: pointer; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; padding: 8px 12px; font-size: 20px; line-height: 1; user-select: none; }
-    .hamburger-menu summary::-webkit-details-marker { display: none; }
-    .hamburger-panel { position: absolute; right: 0; top: calc(100% + 8px); min-width: 260px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px; box-shadow: 0 14px 32px rgba(15, 23, 42, .16); padding: 10px; z-index: 20; display: grid; gap: 8px; }
-    .hamburger-link { display: block; padding: 8px 10px; border-radius: 8px; color: #1f2937; text-decoration: none; }
-    .hamburger-link:hover { background: #f1f5f9; }
-    .card { background: #fff; border: 1px solid #d1d5db; border-radius: 14px; padding: 18px; margin-bottom: 14px; }
-    .msg { padding: 10px 12px; border-radius: 8px; margin: 12px 0 16px; }
-    .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
-    .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
-    .msg.info { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
-    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 14px; }
-    .field { display: grid; gap: 6px; }
-    .field label { font-weight: 700; color: #334155; }
-    input[type="text"], textarea, select { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px; font-size: 16px; color: #111827; background: #fff; }
-    textarea { min-height: 86px; resize: vertical; }
-    button { cursor: pointer; border: 1px solid #374151; background: #111827; color: #fff; border-radius: 10px; padding: 11px 14px; font-weight: 700; }
-    button.secondary { background: #fff; color: #111827; }
-    .hint { color: #64748b; font-size: 14px; line-height: 1.4; }
-    .employees { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 8px; margin-top: 10px; }
-    .employee-option { display: flex; gap: 10px; align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px; background: #f8fafc; }
-    .employee-name { font-weight: 700; color: #111827; }
-    .badge { display: inline-block; margin-top: 4px; font-size: 12px; padding: 3px 7px; border-radius: 999px; border: 1px solid #cbd5e1; color: #475569; background: #fff; }
-    .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
-    a { color: #1d4ed8; text-decoration: none; }
-    @media (max-width: 720px) {
-      body { margin: 16px; }
-      .card { padding: 14px; }
-      .form-grid, .employees { grid-template-columns: minmax(0, 1fr); }
-      .actions > * { width: 100%; }
-    }
-
-    {% include "includes/date_time_controls.css" %}
-  </style>
-</head>
-<body>
-  <div class="topbar">
-    <h1>Генерация тестовых данных</h1>
-    <details class="hamburger-menu" data-hamburger-menu="true">
-      <summary aria-label="Открыть меню">☰</summary>
-      <nav class="hamburger-panel">
-        <a class="hamburger-link" href="/">Главная</a>
-        <a class="hamburger-link" href="/admin">Кабинет администратора</a>
-        {% if admin_session.is_superuser %}<a class="hamburger-link" href="/manager">Задачи команды — вся организация</a>{% endif %}
-        <a class="hamburger-link" href="/employee">Кабинет сотрудника</a>
-        <a class="hamburger-link" href="/employee?admin_mode=1">Кабинет сотрудника: админ</a>
-        <a class="hamburger-link" href="/admin/users">Пользователи</a>
-        <a class="hamburger-link" href="/admin/requests">Заявки</a>
-        <a class="hamburger-link" href="/admin/test-data">Тестовые данные</a>
-      </nav>
-    </details>
-  </div>
-
-  {% if msg %}
-    <div class="msg {{ level }}" role="status" aria-live="polite">{{ msg }}</div>
-  {% endif %}
-
-  <div class="card">
+{% extends "base.html" %}
+{% block title %}Генерация тестовых данных{% endblock %}
+{% block page_id %}admin_test_data{% endblock %}
+{% block heading %}Генерация тестовых данных{% endblock %}
+{% block description %}Подготовьте заявки для проверки работы системы.{% endblock %}
+{% block content %}
+<div class="card app-card">
     <p class="hint">
       Страница создает только тестовые заявки от существующих активных сотрудников.
       При повторной генерации на ту же дату старый тестовый batch за эту дату будет заменен.
     </p>
   </div>
 
-  <form action="/admin/test-data" method="post" class="card">
+  <form action="/admin/test-data" method="post" class="card app-card">
     <div class="form-grid">
       <div class="field">
         <label for="test-work-date-visible">Дата тестовых заявок</label>
         <input type="hidden" name="test_work_date" value="{{ default_work_date }}" />
-        <input id="test-work-date-visible" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" maxlength="10" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" required />
+        <input class="form-control" id="test-work-date-visible" type="text" data-date-picker="true" value="" placeholder="ДД/ММ/ГГГГ" inputmode="numeric" autocomplete="off" maxlength="10" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" required />
       </div>
 
       <div class="field">
         <label for="test-generation-mode">Режим генерации</label>
-        <select id="test-generation-mode" name="generation_mode" required>
+        <select class="form-select" id="test-generation-mode" name="generation_mode" required>
           <option value="planned">Плановые заявки</option>
           <option value="plan_and_actual" selected>План + факт</option>
         </select>
@@ -92,24 +30,24 @@
 
       <div class="field">
         <label for="test-planned-work-time">Плановое время</label>
-        <input id="test-planned-work-time" type="text" name="planned_work_time" value="{{ default_work_time }}" data-time-mask="true" data-disallow-overnight="true" placeholder="10:00 - 14:00" inputmode="numeric" autocomplete="off" maxlength="13" pattern="([01][0-9]|2[0-3]):[0-5][0-9] - ([01][0-9]|2[0-3]):[0-5][0-9]" required />
+        <input class="form-control" id="test-planned-work-time" type="text" name="planned_work_time" value="{{ default_work_time }}" data-time-mask="true" data-disallow-overnight="true" placeholder="10:00 - 14:00" inputmode="numeric" autocomplete="off" maxlength="13" pattern="([01][0-9]|2[0-3]):[0-5][0-9] - ([01][0-9]|2[0-3]):[0-5][0-9]" required />
       </div>
 
       <div class="field">
         <label for="test-task-description">Задача</label>
-        <input id="test-task-description" type="text" name="task_description" value="{{ default_task }}" maxlength="{{ task_description_max_length }}" required />
+        <input class="form-control" id="test-task-description" type="text" name="task_description" value="{{ default_task }}" maxlength="{{ task_description_max_length }}" required />
         <div class="hint">Не более {{ task_description_max_length }} символов.</div>
       </div>
 
       <div class="field">
         <label for="test-justification">Обоснование</label>
-        <input id="test-justification" type="text" name="justification" value="{{ default_justification }}" maxlength="{{ justification_max_length }}" required />
+        <input class="form-control" id="test-justification" type="text" name="justification" value="{{ default_justification }}" maxlength="{{ justification_max_length }}" required />
         <div class="hint">Не более {{ justification_max_length }} символов.</div>
       </div>
 
       <div class="field">
         <label for="test-systems">АС</label>
-        <textarea id="test-systems" name="systems" maxlength="{{ systems_total_max_length }}" required>{{ default_systems }}</textarea>
+        <textarea class="form-control" id="test-systems" name="systems" maxlength="{{ systems_total_max_length }}" required>{{ default_systems }}</textarea>
         <div class="hint">До {{ systems_max_count }} АС, не более {{ system_name_max_length }} символов каждая. АС можно разделять символом | или переносом строки.</div>
       </div>
     </div>
@@ -119,7 +57,7 @@
       <div class="employees">
         {% for employee in employees %}
           <label class="employee-option" for="test-employee-{{ loop.index }}">
-            <input id="test-employee-{{ loop.index }}" type="checkbox" name="employee_keys" value="{{ employee.employee_key }}" />
+            <input class="form-check-input" id="test-employee-{{ loop.index }}" type="checkbox" name="employee_keys" value="{{ employee.employee_key }}" />
             <span>
               <span class="employee-name">{{ employee.full_name }}</span><br />
               <span class="badge">{% if employee.grade_12_plus %}Грейд 12+: Отгул{% else %}До 12: Двойная оплата{% endif %}</span>
@@ -132,13 +70,11 @@
     {% endif %}
 
     <div class="actions">
-      <button type="submit">Сформировать тестовые заявки</button>
+      <button class="btn btn-primary" type="submit">Сформировать тестовые заявки</button>
       <a href="/admin">Вернуться в кабинет администратора</a>
     </div>
   </form>
-
-  <script>
+{% endblock %}
+{% block scripts %}<script>
     {% include "includes/date_time_controls.js" %}
-  </script>
-</body>
-</html>
+  </script>{% endblock %}

@@ -112,20 +112,24 @@ def fingerprint(conn):
     return hashlib.sha256(json.dumps(employees(conn), sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
-def plan_import(conn, rows, bindings=None):
-    bindings = bindings or {}
+def plan_import(conn, rows):
     current = employees(conn)
-    by_email = {}
-    errors, changes, unresolved = [], [], []
+    by_email, by_name = {}, {}
+    errors, changes, skipped = [], [], []
     for key, person in current.items():
+        by_name.setdefault(name_key(person['name']), []).append(person)
         if person['email']:
             by_email.setdefault(person['email'], []).append(key)
     for address, keys in by_email.items():
         if len(keys) > 1:
             errors.append('В базе несколько сотрудников с почтой ' + address + '. Исправьте справочник до импорта.')
-    seen, claimed = set(), set()
+    seen = set()
     graph = {k: p['manager'] for k, p in current.items()}
-    email_keys = {a: ks[0] for a, ks in by_email.items() if len(ks) == 1}
+    current_email_keys = {a: ks[0] for a, ks in by_email.items() if len(ks) == 1}
+
+    def skip(row, reason):
+        skipped.append(dict(row=row['row'], name=row['name'], email=row['email'], reason=reason))
+
     for index, row in enumerate(rows, 2):
         name, address, manager = row
         try:
@@ -137,27 +141,56 @@ def plan_import(conn, rows, bindings=None):
             if address in seen:
                 raise ValueError('Дублирующаяся почта в файле: ' + address)
             seen.add(address)
-            key = email_keys.get(address)
-            candidates = [p for p in current.values() if name_key(p['name']) == name_key(name) and not p['email']]
+            key = current_email_keys.get(address)
+            matched_by = 'Рабочая почта'
             if not key:
-                binding = bindings.get(address)
-                if binding and binding != '__new__':
-                    if binding not in {p['key'] for p in candidates}:
-                        raise ValueError('Недопустимое сопоставление существующей записи')
-                    key = binding
-                elif candidates and binding != '__new__':
-                    unresolved.append(dict(email=address, name=name, candidates=candidates))
+                namesakes = by_name.get(name_key(name), [])
+                candidates = [p for p in namesakes if not p['email']]
+                if candidates and len(namesakes) > 1:
+                    skip(dict(row=index, name=name, email=address),
+                         'Неоднозначное ФИО: в системе несколько сотрудников с таким именем.')
                     continue
+                if candidates:
+                    key = candidates[0]['key']
+                    matched_by = 'ФИО — почта будет заполнена'
                 else:
                     key = 'emp:' + str(uuid.uuid5(uuid.NAMESPACE_URL, 'woh:' + address))
-                email_keys[address] = key
-            if key in claimed:
-                raise ValueError('Одна запись сопоставлена нескольким строкам')
-            claimed.add(key)
-            changes.append(dict(key=key, name=name, email=address, manager_email=manager,
+                    matched_by = 'Новая запись'
+            changes.append(dict(row=index, key=key, name=name, email=address, manager_email=manager,
+                                matched_by=matched_by,
                                 old=current.get(key), action='Обновление' if key in current else 'Создание'))
         except ValueError as exc:
             errors.append(f'Строка {index}: {exc}')
+
+    # Decide all name matches together: file order must not choose which email
+    # wins when several rows refer to the same legacy employee.
+    claims = {}
+    for item in changes:
+        claims.setdefault(item['key'], []).append(item)
+    ambiguous = {key for key, items in claims.items() if len(items) > 1}
+    for item in changes:
+        if item['key'] in ambiguous:
+            skip(item, 'Несколько строк файла сопоставлены одному сотруднику. Уточните ФИО и почту.')
+    changes = [item for item in changes if item['key'] not in ambiguous]
+
+    # A skipped new manager has no usable identity. Skip dependent rows too,
+    # but an existing manager remains usable through their unchanged record.
+    unavailable = {item['email'] for item in skipped} - current_email_keys.keys()
+    pending, dependent_rows, by_manager = list(unavailable), set(), {}
+    for item in changes:
+        by_manager.setdefault(item['manager_email'], []).append(item)
+    for manager_address in pending:
+        for item in by_manager.get(manager_address, []):
+            if item['row'] in dependent_rows:
+                continue
+            skip(item, 'Руководитель пропущен при сопоставлении: ' + item['manager_email'])
+            dependent_rows.add(item['row'])
+            if item['email'] not in current_email_keys and item['email'] not in unavailable:
+                unavailable.add(item['email'])
+                pending.append(item['email'])
+    changes = [item for item in changes if item['row'] not in dependent_rows]
+
+    email_keys = {**current_email_keys, **{item['email']: item['key'] for item in changes}}
     for item in changes:
         manager = email_keys.get(item['manager_email']) if item['manager_email'] else SUPERUSER_KEY
         if item['manager_email'] and manager is None:
@@ -174,12 +207,14 @@ def plan_import(conn, rows, bindings=None):
             node = graph.get(node)
         if errors and errors[-1].startswith('Цикл'):
             break
-    return dict(changes=changes, errors=errors, unresolved=unresolved)
+    return dict(changes=changes, errors=errors, skipped=sorted(skipped, key=lambda item: item['row']))
 
 
 def apply_import(conn, plan):
-    if plan['errors'] or plan['unresolved']:
-        raise ValueError('Сначала устраните ошибки и сопоставьте записи')
+    if plan['errors']:
+        raise ValueError('Сначала устраните ошибки в реестре')
+    if not plan['changes']:
+        return
     # Materialize known email identities so a manager outside the file is usable.
     for person in employees(conn).values():
         if person['email']:

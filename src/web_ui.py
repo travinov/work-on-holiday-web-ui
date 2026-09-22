@@ -10,19 +10,21 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterator
 from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 try:
     from src.app_request_state import STATUS_LABELS, VALID_STATUSES, ensure_app_tables
     from src.db_schema import ensure_core_tables
     from src.request_export import request_export_response
-    from src.team_directory import SUPERUSER_KEY, SUPERUSER_NAME
+    from src.team_directory import SUPERUSER_KEY, SUPERUSER_NAME, email as normalize_work_email
     from src.work_time import (
         LUNCH_WARNING,
         parse_work_time,
@@ -33,7 +35,7 @@ except ModuleNotFoundError:
     from app_request_state import STATUS_LABELS, VALID_STATUSES, ensure_app_tables
     from db_schema import ensure_core_tables
     from request_export import request_export_response
-    from team_directory import SUPERUSER_KEY, SUPERUSER_NAME
+    from team_directory import SUPERUSER_KEY, SUPERUSER_NAME, email as normalize_work_email
     from work_time import (
         LUNCH_WARNING,
         parse_work_time,
@@ -46,6 +48,7 @@ SRC_DIR = BASE_DIR / "src"
 UPLOAD_DIR = BASE_DIR / "generated_exports"
 REPORTS_DIR = BASE_DIR / "reports"
 TEMPLATES_DIR = BASE_DIR / "templates"
+STATIC_DIR = BASE_DIR / "static"
 DB_PATH_ENV = "WORK_ON_HOLIDAY_DB_PATH"
 SUPERUSER_LOGIN_ENV = "WORK_ON_HOLIDAY_SUPERUSER_LOGIN"
 SUPERUSER_PASSWORD_ENV = "WORK_ON_HOLIDAY_SUPERUSER_PASSWORD"
@@ -73,7 +76,18 @@ ADMIN_FILTER_NAME_MAX_LENGTH = 150
 DELETE_CHALLENGE_ANSWER_MAX_LENGTH = 3
 
 app = FastAPI(title="Work On Holiday - Web UI")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+@lru_cache(maxsize=32)
+def asset_url(path: str) -> str:
+    """Version local assets by content so an update cannot mix old CSS and new HTML."""
+    digest = hashlib.sha256((STATIC_DIR / path).read_bytes()).hexdigest()[:12]
+    return f"/static/{path}?v={digest}"
+
+
+templates.env.globals["asset_url"] = asset_url
 templates.env.globals["task_description_max_length"] = TASK_DESCRIPTION_MAX_LENGTH
 templates.env.globals["justification_max_length"] = JUSTIFICATION_MAX_LENGTH
 templates.env.globals["full_name_max_length"] = FULL_NAME_MAX_LENGTH
@@ -414,11 +428,31 @@ def resolve_employee_by_name(conn: sqlite3.Connection, full_name: str) -> dict[s
     return {"employee_key": matches[0]['key'], "full_name": matches[0]['name']}
 
 
-def register_employee_directory_entry(conn: sqlite3.Connection, full_name: str) -> dict[str, str]:
+def register_employee_directory_entry(
+    conn: sqlite3.Connection, full_name: str, work_email: str | None = None,
+) -> dict[str, str]:
     full_name_display = " ".join(full_name.strip().split())
     full_name_key = normalize_name_key(full_name_display)
     if not full_name_display or not full_name_key:
         raise ValueError("Укажите ФИО")
+
+    # Internal legacy imports may still have no address. Public registration
+    # always supplies it and validates uniqueness under the same write lock.
+    if work_email is not None:
+        work_email = normalize_work_email(work_email)
+        if not work_email:
+            raise ValueError("Для новой регистрации укажите рабочую почту")
+        if len(work_email) > 254:
+            raise ValueError("Рабочая почта не может быть длиннее 254 символов")
+        if not conn.in_transaction:
+            conn.execute('BEGIN IMMEDIATE')
+        duplicate = conn.execute('''SELECT 1 FROM app_employee_directory WHERE lower(trim(work_email))=?
+                                    UNION ALL SELECT 1 FROM app_org_employee WHERE lower(trim(email))=?''',
+                                 (work_email, work_email)).fetchone()
+        if duplicate:
+            raise ValueError("Рабочая почта уже используется. Войдите по ней или обратитесь к администратору")
+        if conn.execute('SELECT 1 FROM app_employee_directory WHERE full_name_key=?', (full_name_key,)).fetchone():
+            raise ValueError("Запись уже существует. Войдите по ФИО или обратитесь к администратору")
 
     now = datetime.now().isoformat(timespec="seconds")
     conn.execute(
@@ -433,12 +467,12 @@ def register_employee_directory_entry(conn: sqlite3.Connection, full_name: str) 
             grade_num,
             created_at,
             updated_at
-        ) VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?)
+        ) VALUES (?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)
         ON CONFLICT(full_name_key) DO UPDATE SET
             full_name = excluded.full_name,
             updated_at = excluded.updated_at;
         """,
-        (full_name_key, full_name_display, now, now),
+        (full_name_key, full_name_display, work_email, now, now),
     )
     return {"employee_key": full_name_key, "full_name": full_name_display}
 
@@ -646,6 +680,26 @@ def get_admin_session(request: Request) -> dict[str, Any] | None:
     if employee_session and int(employee_session.get("is_admin") or 0):
         return employee_session
     return None
+
+
+def navigation_context(request: Request) -> dict[str, Any]:
+    root = get_superuser_session(request)
+    employee = authenticate_employee_by_token(request) if not root else None
+    session = root or employee or {}
+    return {"ui_nav": {
+        "superuser": bool(root),
+        "admin": bool(root or session.get("is_admin")),
+        "manager": bool(root or session.get("is_manager")),
+        "name": session.get("full_name", "Гость"),
+        "role": ("Суперпользователь" if root else "Администратор" if session.get("is_admin")
+                 else "Руководитель" if session.get("is_manager") else "Сотрудник" if session else "Вход в систему"),
+        "authenticated": bool(session),
+        "path": request.url.path,
+        "admin_mode": request.query_params.get("admin_mode") == "1",
+    }}
+
+
+templates.context_processors.append(navigation_context)
 
 
 def is_admin_or_superuser_request(request: Request) -> bool:
@@ -2102,6 +2156,7 @@ def employee_login(
     employee_key: str = Form(""),
     grade_12_plus: str = Form("0"),
     no_patronymic: str = Form("0"),
+    work_email: str = Form(""),
 ):
     full_name = full_name.strip()
     access_token = access_token.strip()
@@ -2111,10 +2166,12 @@ def employee_login(
 
     if not full_name:
         return redirect_with_message("/employee", "Укажите ФИО", "error")
-    if len(full_name) > FULL_NAME_MAX_LENGTH:
+    identifier_max_length = 254 if '@' in full_name else FULL_NAME_MAX_LENGTH
+    if len(full_name) > identifier_max_length:
         return redirect_with_message(
             "/employee",
-            f"ФИО не может быть длиннее {FULL_NAME_MAX_LENGTH} символов",
+            (f"Рабочая почта не может быть длиннее {identifier_max_length} символов" if '@' in full_name
+             else f"ФИО не может быть длиннее {identifier_max_length} символов"),
             "error",
         )
     if len(access_token) > ACCESS_TOKEN_MAX_LENGTH:
@@ -2126,6 +2183,10 @@ def employee_login(
 
     with get_db_connection() as conn:
         ensure_app_tables(conn)
+        # Serialize identity lookup and creation with roster imports and other
+        # registrations, including case-insensitive email uniqueness checks.
+        if not conn.in_transaction:
+            conn.execute('BEGIN IMMEDIATE')
         try:
             employee = resolve_employee_by_name(conn, full_name)
         except HTTPException as exc:
@@ -2147,7 +2208,10 @@ def employee_login(
                     ),
                     "error",
                 )
-            employee = register_employee_directory_entry(conn, full_name)
+            try:
+                employee = register_employee_directory_entry(conn, full_name, work_email)
+            except ValueError as exc:
+                return redirect_with_message("/employee", str(exc), "error")
             upsert_employee_grade_12_plus(conn, employee["employee_key"], grade_12_plus_flag)
             conn.commit()
         profile = get_employee_profile(conn, employee["employee_key"])
