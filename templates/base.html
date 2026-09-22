@@ -43,7 +43,7 @@
     <header class="app-topbar">
       <span class="app-topbar-label">Планирование и учёт работы</span>
       <div class="account-menu">
-        <span class="avatar avatar-sm bg-blue-lt">{{ icon('user') }}</span>
+        <span class="avatar avatar-sm bg-primary-lt">{{ icon('user') }}</span>
         <div class="account-info"><strong>{{ ui_nav.name }}</strong><span>{{ ui_nav.role }}</span></div>
         {% if ui_nav.authenticated %}<form action="{{ '/superuser/logout' if ui_nav.superuser else '/employee/logout' }}" method="post"><button type="submit" class="btn btn-icon btn-ghost-secondary" aria-label="{{ 'Выйти из суперпользователя' if ui_nav.superuser else 'Выйти' }}" title="Выйти">{{ icon('logout') }}</button></form>{% endif %}
       </div>

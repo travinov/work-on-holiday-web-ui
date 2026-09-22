@@ -22,6 +22,7 @@
 Все кабинеты используют общую навигацию и компоненты Tabler 1.5.1: формы, кнопки,
 таблицы, статусы и диалоговые окна. На узком экране меню сворачивается, формы
 перестраиваются в одну колонку, широкие таблицы прокручиваются внутри карточек.
+Основной цвет интерфейса — racing green (`#004225`) со светлыми зелёными подложками.
 
 CSS, JavaScript, SVG-иконки и favicon включены в ZIP в папке `static/`.
 Приложение отдаёт их по `/static/` с того же корпоративного сервера, на котором
@@ -188,7 +189,7 @@ ssh CI09479675-lnx-travinov@tsles-assai0001.esrt.sber.ru
 ZIP:
 
 ```text
-https://codeload.github.com/travinov/work-on-holiday-web-ui/zip/refs/tags/v2026.09.22-ui
+https://codeload.github.com/travinov/work-on-holiday-web-ui/zip/refs/tags/v2026.09.22-racing-green
 ```
 
 #### Отдельный экземпляр Production

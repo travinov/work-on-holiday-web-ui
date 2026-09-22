@@ -13,7 +13,7 @@
     .date-picker-day:hover { border-color: #94a3b8; background: #f8fafc !important; }
     .date-picker-day.outside { color: #94a3b8 !important; }
     .date-picker-day.today { border-color: #0f766e; }
-    .date-picker-day.selected { background: #066fd1 !important; color: #fff !important; border-color: #066fd1; }
+    .date-picker-day.selected { background: var(--app-accent) !important; color: #fff !important; border-color: var(--app-accent); }
     .field-card .date-input-wrap, .field .date-input-wrap { width: 100%; align-items: stretch; }
     .field-card .date-picker-button, .field .date-picker-button { min-height: 42px; }
     .action-row .date-input-wrap { flex: 1 1 260px; max-width: 360px; }
@@ -31,7 +31,7 @@
     .time-feedback .field-validation-error { order: -1; }
     .time-duration { color: #0f766e; font-size: 13px; font-weight: 700; }
     .time-lunch-warning { color: #9a3412; font-size: 13px; font-weight: 700; }
-    .overnight-preview { margin-top: 2px; padding: 9px 10px; border: 1px solid #93c5fd; border-radius: 8px; background: #eff6ff; color: #1e3a8a; font-size: 13px; line-height: 1.4; }
+    .overnight-preview { margin-top: 2px; padding: 9px 10px; border: 1px solid var(--app-accent-border); border-radius: 8px; background: var(--app-accent-soft); color: var(--app-accent); font-size: 13px; line-height: 1.4; }
     .overnight-preview[hidden] { display: none; }
     .compact-date .date-input-wrap { max-width: 196px; }
     @media (max-width: 480px) {
@@ -40,4 +40,4 @@
     }
 
 .compact-date .date-input-wrap { max-width: none; }
-.date-picker-button:focus-visible,.date-picker-nav:focus-visible,.date-picker-day:focus-visible { outline: 3px solid #8abcef; outline-offset: 1px; }
+.date-picker-button:focus-visible,.date-picker-nav:focus-visible,.date-picker-day:focus-visible { outline: 3px solid var(--app-accent-focus); outline-offset: 1px; }
