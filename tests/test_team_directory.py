@@ -74,6 +74,144 @@ class TeamTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         return unescape(re.search(r'id="request-export" href="([^"]+)"', page.text)[1])
 
+    def test_superuser_heads_import_and_legacy_structure_without_fake_employee(self):
+        with ui.get_db_connection() as conn:
+            legacy = ui.register_employee_directory_entry(conn, 'Старый Сотрудник')['employee_key']
+            ui.upsert_employee_token(conn, legacy, 'legacy-token')
+            # A database from before this change has NULL managers at the top.
+            conn.execute('UPDATE app_org_employee SET manager_key=NULL WHERE employee_key=?', (self.root,))
+            before = ui.get_employee_token_record(conn, legacy)['token_hash']
+            d.ensure_team_tables(conn)
+            people = d.employees(conn)
+            self.assertEqual(people[legacy]['manager'], d.SUPERUSER_KEY)
+            self.assertEqual(people[self.root]['manager'], d.SUPERUSER_KEY)
+            self.assertEqual(people[self.worker]['manager'], self.keys['middle@example.org'])
+            self.assertEqual(d.team_keys(conn, d.SUPERUSER_KEY),
+                             {self.root, self.keys['other@example.org'], legacy})
+            self.assertEqual(d.team_keys(conn, d.SUPERUSER_KEY, 'all'), set(people))
+            self.assertNotIn(d.SUPERUSER_KEY, people)
+            self.assertIsNone(conn.execute('SELECT 1 FROM app_employee_directory WHERE full_name_key=?',
+                                          (d.SUPERUSER_KEY,)).fetchone())
+            plan = d.plan_import(conn, [['Начальник Средний', 'middle@example.org', '']])
+            self.assertFalse(plan['errors'])
+            self.assertEqual(plan['changes'][0]['manager'], d.SUPERUSER_KEY)
+            d.apply_import(conn, plan)
+            self.assertIn(self.keys['middle@example.org'], d.team_keys(conn, d.SUPERUSER_KEY))
+            self.assertNotIn(self.worker, d.team_keys(conn, self.root, 'all'))
+            self.assertIn(self.worker, d.team_keys(conn, d.SUPERUSER_KEY, 'all'))
+            self.assertEqual(ui.get_employee_token_record(conn, legacy)['token_hash'], before)
+        overview = {p['employee_key']: p for p in ui.get_admin_employees_overview()}
+        self.assertEqual(overview[legacy]['manager_name'], 'Суперпользователь')
+        self.assertEqual(overview[self.worker]['manager_name'], 'Начальник Средний')
+
+    def test_superuser_default_all_levels_details_and_filtered_export(self):
+        self.task(self.root, 1, day=date.today().isoformat(), text='Задача верхнего уровня')
+        self.task(self.worker, 2, day=date.today().isoformat(), text='Задача глубоко в структуре')
+        self.task(self.keys['other@example.org'], 3, day=date.today().isoformat(), text='Другая ветвь')
+        # Historical requests may be the only record for an employee.
+        self.task('legacy-request-only', 4, day=date.today().isoformat(), text='Задача из старой базы')
+        with ui.get_db_connection() as conn:
+            conn.execute("UPDATE survey_responses SET full_name='Исторический Сотрудник' WHERE response_id=4")
+        self.admin()
+        page = self.client.get('/manager')
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('value="all" selected', page.text)
+        self.assertIn('Оргструктура · сотрудников: 6', page.text)
+        _, rows = self.exported_rows(self.client.get(self.export_link(page)))
+        self.assertEqual({r['ID заявки'] for r in rows}, {1, 2, 3, 4})
+        self.assertEqual(next(r for r in rows if r['ID заявки'] == 4)['Руководитель'], 'Суперпользователь')
+        for identifier in (1, 2, 3, 4):
+            detail = self.client.get(f'/manager/requests/{identifier}')
+            self.assertEqual(detail.status_code, 200)
+            self.assertIn('Управлять заявками сотрудника', detail.text)
+        self.assertEqual(self.client.get('/manager/requests/9999').status_code, 404)
+        params = dict(apply='1', scope='direct', period='current')
+        _, rows = self.exported_rows(self.client.get('/manager/requests/export', params=params))
+        self.assertEqual({r['ID заявки'] for r in rows}, {1, 3, 4})
+        params.update(scope='all', employees=[self.worker], surname='Нижний', text='глубоко')
+        page = self.client.get('/manager', params=params)
+        _, rows = self.exported_rows(self.client.get(self.export_link(page)))
+        self.assertEqual([r['ID заявки'] for r in rows], [2])
+        self.assertIn('Оргструктура · сотрудников: 6', page.text)
+        self.exported_rows(self.client.get('/admin/requests/export'))
+
+    def test_superuser_access_empty_organization_and_navigation(self):
+        with ui.get_db_connection() as conn:
+            conn.execute('DELETE FROM app_org_employee')
+            conn.execute('DELETE FROM app_employee_directory')
+            conn.execute('DELETE FROM app_employee_auth')
+        self.admin()
+        page = self.client.get('/manager')
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('Оргструктура · сотрудников: 0', page.text)
+        _, rows = self.exported_rows(self.client.get(self.export_link(page)))
+        self.assertEqual(rows, [])
+        for url in ('/', '/admin', '/admin/users', '/admin/requests', '/admin/test-data', '/employee?admin_mode=1'):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('href="/manager"', response.text, url)
+
+    def test_superuser_session_precedes_employee_and_filters_are_isolated(self):
+        self.login('worker@example.org')
+        self.task(self.keys['other@example.org'], 1)
+        self.admin()
+        raw = dict(name='Вся организация', period='range', date_from='2026-09-07', date_to='2026-09-13')
+        page = self.client.post('/manager/filters', data=raw)
+        url = self.export_link(page)
+        _, rows = self.exported_rows(self.client.get(url))
+        self.assertEqual([r['ID заявки'] for r in rows], [1])
+        with ui.get_db_connection() as conn:
+            saved = conn.execute('SELECT owner_key,payload FROM app_team_filter WHERE name=?', (raw['name'],)).fetchone()
+            self.assertEqual(saved['owner_key'], d.SUPERUSER_KEY)
+            self.assertEqual(json.loads(saved['payload'])['scope'], 'all')
+        with TestClient(ui.app) as other:
+            other.post('/superuser/login', data={'superuser_login':'root', 'superuser_password':'test-password'})
+            self.assertIn('Уникальная задача', other.get('/manager', params={'saved':raw['name']}).text)
+            other.post('/manager/filters/delete', data={'name':raw['name']})
+        self.assertEqual(self.client.get('/manager', params={'saved':raw['name']}).status_code, 404)
+        self.client.post('/superuser/logout')
+        for path in ('/manager', '/manager/requests/1', url):
+            self.assertEqual(self.client.get(path).status_code, 403)
+        self.login()
+        self.assertEqual(self.client.get('/manager').status_code, 200)
+        self.assertEqual(self.client.get('/manager/requests/1').status_code, 404)
+        self.assertEqual(self.client.get('/manager', params={'saved':raw['name']}).status_code, 404)
+
+    def test_superuser_invalid_session_and_employee_admin_do_not_get_global_access(self):
+        other_key = self.keys['other@example.org']
+        self.task(other_key, 1)
+        self.client.cookies.set(ui.SUPERUSER_COOKIE_NAME, '__superuser__')
+        self.assertEqual(self.client.get('/manager').status_code, 403)
+        self.login('worker@example.org')
+        with ui.get_db_connection() as conn:
+            ui.update_employee_admin_role(conn, self.worker, True, 'test')
+        self.assertEqual(self.client.get('/admin/users').status_code, 200)
+        for path in ('/manager', '/manager/requests/1', '/manager/requests/export'):
+            self.assertEqual(self.client.get(path, params={'owner_key':d.SUPERUSER_KEY}).status_code, 403)
+        self.admin()
+        url = self.export_link(self.client.get('/manager'))
+        with patch.dict('os.environ', {'WORK_ON_HOLIDAY_SUPERUSER_PASSWORD':'changed-password'}):
+            self.assertEqual(self.client.get(url).status_code, 403)
+
+    def test_superuser_roster_preview_default_manager_and_admin_mutation(self):
+        self.admin()
+        data = (';'.join(d.HEADERS) + '\nНовый Сотрудник;new@example.org;').encode()
+        preview = self.client.post('/admin/roster/preview', files={'file':('root.csv', data)})
+        self.assertIn('<td>Суперпользователь</td>', preview.text)
+        identifier = re.search(r'/admin/roster/([^/]+)/apply', preview.text)[1]
+        self.client.post(f'/admin/roster/{identifier}/apply')
+        with ui.get_db_connection() as conn:
+            people = d.employees(conn)
+            new = next(p for p in people.values() if p['email'] == 'new@example.org')
+            self.assertEqual(new['manager'], d.SUPERUSER_KEY)
+        self.task(self.worker, 1)
+        detail = self.client.get('/manager/requests/1')
+        link = unescape(re.search(r'href="([^"]+)">Управлять заявками', detail.text)[1])
+        self.assertIn('Уникальная задача', self.client.get(link).text)
+        self.client.post('/employee/request/cancel', data={'employee_key':self.worker, 'response_id':1, 'admin_mode':'1'})
+        with ui.get_db_connection() as conn:
+            self.assertEqual(conn.execute('SELECT status FROM app_request_state WHERE response_id=1').fetchone()[0], 'cancelled')
+
     def test_manager_export_matches_filtered_page_and_corrected_values(self):
         self.login()
         direct = self.keys['direct@example.org']

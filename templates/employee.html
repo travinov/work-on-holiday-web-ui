@@ -120,13 +120,13 @@
   </style>
 </head>
 <body>
-  {% if employee_session and employee_session.is_manager %}<div class="card"><a href="/manager">Задачи команды →</a></div>{% endif %}
+  {% if is_superuser or (employee_session and employee_session.is_manager) %}<div class="card"><a href="/manager">Задачи команды{% if is_superuser %} — вся организация{% endif %} →</a></div>{% endif %}
   <div class="topbar">
     <h1 style="margin: 0;">Кабинет сотрудника</h1>
     <details class="hamburger-menu" data-hamburger-menu="true">
       <summary aria-label="Открыть меню">☰</summary>
       <nav class="hamburger-panel">
-        {% if employee_session and employee_session.is_manager %}<a class="hamburger-link" href="/manager">Задачи команды</a>{% endif %}
+        {% if is_superuser or (employee_session and employee_session.is_manager) %}<a class="hamburger-link" href="/manager">Задачи команды</a>{% endif %}
         <a class="hamburger-link" href="/">Главная</a>
         {% if is_admin %}
           <a class="hamburger-link" href="/admin">Кабинет администратора</a>

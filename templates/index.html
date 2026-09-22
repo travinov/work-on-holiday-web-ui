@@ -55,6 +55,7 @@
       <nav class="hamburger-panel">
         <a class="hamburger-link" href="/">Главная</a>
         <a class="hamburger-link" href="/admin">Кабинет администратора</a>
+        {% if admin_session.is_superuser %}<a class="hamburger-link" href="/manager">Задачи команды — вся организация</a>{% endif %}
         <a class="hamburger-link" href="/employee">Кабинет сотрудника</a>
         <a class="hamburger-link" href="/employee?admin_mode=1">Кабинет сотрудника: админ</a>
         <a class="hamburger-link" href="/admin/users">Пользователи</a>
@@ -84,6 +85,7 @@
       <a href="/admin/test-data" style="font-weight: 600;">Тестовые данные</a>
       <a href="/employee?admin_mode=1" style="font-weight: 600;">Кабинет сотрудника</a>
       {% if is_superuser %}
+        <a href="/manager" style="font-weight: 600;">Задачи команды — вся организация</a>
         <form action="/superuser/logout" method="post">
           <button type="submit" class="secondary">Выйти из суперпользователя</button>
         </form>

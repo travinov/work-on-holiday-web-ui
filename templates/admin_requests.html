@@ -78,6 +78,7 @@
       <nav class="hamburger-panel">
         <a class="hamburger-link" href="/">Главная</a>
         <a class="hamburger-link" href="/admin">Кабинет администратора</a>
+        {% if admin_session.is_superuser %}<a class="hamburger-link" href="/manager">Задачи команды — вся организация</a>{% endif %}
         <a class="hamburger-link" href="/employee">Кабинет сотрудника</a>
         <a class="hamburger-link" href="/employee?admin_mode=1">Кабинет сотрудника: админ</a>
         <a class="hamburger-link" href="/admin/users">Пользователи</a>

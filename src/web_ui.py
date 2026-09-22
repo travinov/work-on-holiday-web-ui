@@ -22,6 +22,7 @@ try:
     from src.app_request_state import STATUS_LABELS, VALID_STATUSES, ensure_app_tables
     from src.db_schema import ensure_core_tables
     from src.request_export import request_export_response
+    from src.team_directory import SUPERUSER_KEY, SUPERUSER_NAME
     from src.work_time import (
         LUNCH_WARNING,
         parse_work_time,
@@ -32,6 +33,7 @@ except ModuleNotFoundError:
     from app_request_state import STATUS_LABELS, VALID_STATUSES, ensure_app_tables
     from db_schema import ensure_core_tables
     from request_export import request_export_response
+    from team_directory import SUPERUSER_KEY, SUPERUSER_NAME
     from work_time import (
         LUNCH_WARNING,
         parse_work_time,
@@ -627,10 +629,11 @@ def get_superuser_session(request: Request) -> dict[str, Any] | None:
     if not is_superuser_authenticated(request):
         return None
     return {
-        "employee_key": "__superuser__",
-        "full_name": "Суперпользователь",
+        "employee_key": SUPERUSER_KEY,
+        "full_name": SUPERUSER_NAME,
         "is_admin": 1,
         "is_superuser": 1,
+        "is_manager": True,
         "employee_status": "active",
     }
 
@@ -1183,9 +1186,9 @@ def get_admin_employees_overview() -> list[dict[str, Any]]:
             """
         ).fetchall()
     try:
-        from src.team_directory import employees, team_keys
+        from src.team_directory import employees, team_keys, manager_name
     except ModuleNotFoundError:
-        from team_directory import employees, team_keys
+        from team_directory import employees, team_keys, manager_name
     with get_db_connection() as conn:
         people = employees(conn)
         result = {}
@@ -1193,7 +1196,7 @@ def get_admin_employees_overview() -> list[dict[str, Any]]:
             user = dict(row)
             person = people.get(user['employee_key'], {})
             user.update(full_name=person.get('name', user['full_name']), work_email=person.get('email', ''),
-                        manager_name=people.get(person.get('manager'), {}).get('name', ''),
+                        manager_name=manager_name(people, person.get('manager')),
                         is_manager=bool(team_keys(conn, user['employee_key'])))
             result[user['employee_key']] = user
     return sorted(result.values(), key=lambda user: user['full_name'])
@@ -2080,6 +2083,7 @@ def employee_cabinet(
             "today": date.today().isoformat(),
             "admin_mode": is_admin_mode,
             "is_admin": is_admin,
+            "is_superuser": get_superuser_session(request) is not None,
             "employee_session": employee_session,
             "token_meta": token_meta,
             "profile": profile,

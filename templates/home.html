@@ -88,7 +88,7 @@
         <h1>Работа в выходной день</h1>
         <p class="lead">
           Сотрудник оформляет заявки и вносит факт. Администратор работает в той же модели входа,
-          но с ролью администратора. Суперпользователь нужен только для первичного назначения ролей.
+          но с ролью администратора. Суперпользователь управляет системой и видит задачи всей организации.
         </p>
         <div class="facts">
           <div class="fact">
@@ -125,6 +125,7 @@
               <a class="button secondary" href="/admin/requests">Заявки</a>
               <a class="button secondary" href="/admin/test-data">Тестовые данные</a>
               {% if is_superuser %}
+                <a class="button secondary" href="/manager">Задачи команды — вся организация</a>
                 <form action="/superuser/logout" method="post">
                   <button type="submit" class="button secondary">Выйти из суперпользователя</button>
                 </form>
@@ -133,9 +134,9 @@
           </section>
         {% else %}
           <section class="role-card">
-            <div class="role-title">Первичная настройка</div>
+            <div class="role-title">Суперпользователь</div>
             <div class="role-text">
-              Суперпользователь нужен только для первичного назначения администраторов и восстановления доступа.
+              Суперпользователь управляет системой и видит оргструктуру и заявки всех сотрудников.
             </div>
             {% if superuser_auth_configured %}
               <form action="/superuser/login" method="post" class="token-form">

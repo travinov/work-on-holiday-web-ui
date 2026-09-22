@@ -14,6 +14,8 @@ from datetime import date, timedelta
 
 
 HEADERS = ['ФИО сотрудника', 'Рабочая почта сотрудника', 'Рабочая почта руководителя']
+SUPERUSER_KEY = '__superuser__'
+SUPERUSER_NAME = 'Суперпользователь'
 
 
 def ensure_team_tables(conn):
@@ -91,7 +93,19 @@ def employees(conn):
     for r in conn.execute('SELECT * FROM app_org_employee'):
         if r['employee_key'] in result:
             result[r['employee_key']].update(email=r['email'], manager=r['manager_key'])
+    # The root is a system account, never an imported employee or a token identity.
+    # Include legacy and self-registered employees without rewriting their records.
+    result.pop(SUPERUSER_KEY, None)
+    for person in result.values():
+        if person['manager'] not in result:
+            person['manager'] = SUPERUSER_KEY
     return result
+
+
+def manager_name(people, key):
+    if key == SUPERUSER_KEY:
+        return SUPERUSER_NAME
+    return people.get(key, {}).get('name', 'Без руководителя')
 
 
 def fingerprint(conn):
@@ -145,7 +159,7 @@ def plan_import(conn, rows, bindings=None):
         except ValueError as exc:
             errors.append(f'Строка {index}: {exc}')
     for item in changes:
-        manager = email_keys.get(item['manager_email']) if item['manager_email'] else None
+        manager = email_keys.get(item['manager_email']) if item['manager_email'] else SUPERUSER_KEY
         if item['manager_email'] and manager is None:
             errors.append('Неизвестный руководитель: ' + item['manager_email'])
         item['manager'] = manager
@@ -169,8 +183,8 @@ def apply_import(conn, plan):
     # Materialize known email identities so a manager outside the file is usable.
     for person in employees(conn).values():
         if person['email']:
-            conn.execute('INSERT OR IGNORE INTO app_org_employee(employee_key,email) VALUES (?,?)',
-                         (person['key'], person['email']))
+            conn.execute('INSERT OR IGNORE INTO app_org_employee(employee_key,email,manager_key) VALUES (?,?,?)',
+                         (person['key'], person['email'], person['manager']))
     for p in plan['changes']:
         conn.execute('''INSERT INTO app_employee_directory(full_name_key,full_name,work_email,created_at,updated_at)
                         VALUES (?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
@@ -182,6 +196,10 @@ def apply_import(conn, plan):
 
 
 def team_keys(conn, owner, scope='direct'):
+    if owner == SUPERUSER_KEY:
+        people = employees(conn)
+        return {key for key, person in people.items()
+                if scope == 'all' or person['manager'] == SUPERUSER_KEY}
     if scope == 'direct':
         return {r[0] for r in conn.execute('SELECT employee_key FROM app_org_employee WHERE manager_key=?', (owner,))}
     return {r[0] for r in conn.execute('''WITH RECURSIVE team(k) AS (

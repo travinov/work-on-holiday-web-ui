@@ -27,13 +27,18 @@ def register_routes(ui):
         return session['employee_key']
 
     def manager(request, conn):
+        if ui.get_superuser_session(request):
+            return directory.SUPERUSER_KEY
         session = ui.authenticate_employee_by_token(request)
-        if not session or not directory.team_keys(conn, session['employee_key']):
+        if (not session or session['employee_key'] == directory.SUPERUSER_KEY
+                or not directory.team_keys(conn, session['employee_key'])):
             raise HTTPException(403, 'Требуется действующий доступ руководителя')
         return session['employee_key']
 
     def render(request, template, **context):
-        return ui.templates.TemplateResponse(request, template, context)
+        return ui.templates.TemplateResponse(request, template, dict(
+            context, is_superuser=ui.get_superuser_session(request) is not None,
+            manager_name=directory.manager_name))
 
     def draft(conn, identifier, actor):
         row = conn.execute("SELECT * FROM app_roster_draft WHERE id=? AND actor=? AND created_at > datetime('now','-1 day')", (identifier, actor)).fetchone()
@@ -128,7 +133,8 @@ def register_routes(ui):
             row = conn.execute("SELECT payload FROM app_team_filter WHERE owner_key=? AND name=''", (owner,)).fetchone()
             raw = json.loads(row['payload']) if row else {}
         try:
-            filters = directory.normalize_filters(raw)
+            filters = directory.normalize_filters(
+                {'scope': 'all', **raw} if owner == directory.SUPERUSER_KEY else raw)
             if query.get('step') in {'-1', '1'}:
                 start, _ = directory.filter_dates(filters)
                 start = date.fromisoformat(start) + timedelta(days=7 * int(query['step']))
@@ -164,11 +170,16 @@ def register_routes(ui):
                 if filters['text'].casefold() not in item['task_description'].casefold():
                     continue
                 lead = people.get(person['manager'], {})
-                item['manager_name'] = lead.get('name', 'Без руководителя') + (' · ' + lead['email'] if lead.get('email') else '')
+                item['manager_name'] = directory.manager_name(people, person['manager']) + (' · ' + lead['email'] if lead.get('email') else '')
                 item['full_name'] = person['name']
                 tasks.append(item)
         tasks.sort(key=lambda r: (r['manager_name'] if filters['scope'] == 'all' else '', r['full_name'], r['planned_work_date_iso']))
-        return dict(team=team, tasks=tasks, without=without, date_from=start, date_to=end, stale=bool(selected - allowed))
+        organization = sorted(
+            [dict(p, manager_name=directory.manager_name(people, p['manager'])) for p in people.values()],
+            key=lambda p: (p['manager'] != directory.SUPERUSER_KEY, p['manager_name'], p['name']),
+        ) if owner == directory.SUPERUSER_KEY else []
+        return dict(team=team, tasks=tasks, without=without, date_from=start, date_to=end,
+                    stale=bool(selected - allowed), organization=organization)
 
     @app.get('/manager')
     def manager_page(request: Request):
@@ -212,7 +223,8 @@ def register_routes(ui):
             try:
                 raw = dict(form)
                 raw['employees'] = form.getlist('employees')
-                filters = directory.normalize_filters(raw)
+                filters = directory.normalize_filters(
+                    {'scope': 'all', **raw} if owner == directory.SUPERUSER_KEY else raw)
             except (ValueError, TypeError) as exc:
                 raise HTTPException(422, str(exc))
             conn.execute('''INSERT INTO app_team_filter VALUES (?,?,?) ON CONFLICT(owner_key,name)
@@ -239,4 +251,5 @@ def register_routes(ui):
             if not item:
                 raise HTTPException(404, 'Задача не найдена')
             item['full_name'] = directory.employees(conn).get(row[0], {}).get('name', item['full_name'])
-        return render(request, 'manager_detail.html', task=item)
+        employee_admin_url = '/employee?' + urlencode({'admin_mode': '1', 'employee_key': row[0]})
+        return render(request, 'manager_detail.html', task=item, employee_admin_url=employee_admin_url)
