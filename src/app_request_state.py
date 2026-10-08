@@ -31,6 +31,7 @@ def _create_app_request_state_table(conn: sqlite3.Connection, table_name: str = 
             override_systems TEXT,
             actual_work_date TEXT,
             actual_work_time TEXT,
+            actual_work_comment TEXT,
             corrected_at TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -129,6 +130,8 @@ def ensure_app_tables(conn: sqlite3.Connection) -> None:
         row[1]
         for row in conn.execute("PRAGMA table_info(app_request_state)").fetchall()
     }
+    if "actual_work_comment" not in request_state_columns:
+        conn.execute("ALTER TABLE app_request_state ADD COLUMN actual_work_comment TEXT;")
     if "returned_for_correction" not in request_state_columns:
         conn.execute(
             "ALTER TABLE app_request_state ADD COLUMN returned_for_correction INTEGER NOT NULL DEFAULT 0 CHECK(returned_for_correction IN (0, 1));"

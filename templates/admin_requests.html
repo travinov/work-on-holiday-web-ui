@@ -76,6 +76,7 @@
               {% else %}
                 —
               {% endif %}
+              {% if item.actual_work_comment %}<div style="white-space: pre-wrap; margin-top: 6px;"><strong>Комментарий:</strong> {{ item.actual_work_comment }}</div>{% endif %}
             </td>
             <td role="cell" data-label="Закрытие">
               {% if item.planning_lock_label %}<div>Прием: {{ item.planning_lock_label }}</div>{% endif %}

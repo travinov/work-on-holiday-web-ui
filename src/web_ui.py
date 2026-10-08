@@ -1420,6 +1420,7 @@ def get_admin_requests_overview() -> list[dict[str, Any]]:
                 st.returned_for_correction,
                 st.actual_work_date,
                 st.actual_work_time,
+                st.actual_work_comment,
                 lock.week_start,
                 lock.week_end,
                 lock.locked_at,
@@ -1529,6 +1530,7 @@ def get_employee_requests(employee_key: str, admin_mode: bool = False) -> list[d
                 st.override_systems,
                 st.actual_work_date AS state_actual_work_date,
                 st.actual_work_time AS state_actual_work_time,
+                st.actual_work_comment,
                 st.corrected_at
             FROM planned_rows p
             LEFT JOIN planned_systems ps ON ps.response_id = p.response_id
@@ -1578,8 +1580,8 @@ def get_employee_requests(employee_key: str, admin_mode: bool = False) -> list[d
                 and lock_info is None
                 and (planning_lock is None or returned_for_correction)
             )
-            can_edit_actual = admin_mode or (
-                status in {"in_progress", "in_fact"} and lock_info is None and actual_lock is None
+            can_edit_actual = status in {"in_progress", "in_fact"} and (
+                admin_mode or (lock_info is None and actual_lock is None)
             )
 
             result.append(
@@ -1607,6 +1609,7 @@ def get_employee_requests(employee_key: str, admin_mode: bool = False) -> list[d
                     "actual_work_date_ru": to_ru_date(effective_actual_date),
                     "actual_work_time": effective_actual_time or "",
                     "actual_lunch_warning": lunch_warning_for_time(effective_actual_time),
+                    "actual_work_comment": row_dict["actual_work_comment"] or "",
                     "is_locked": is_locked,
                     "planning_lock_label": (
                         f"{to_ru_date(planning_lock['date_from'])} - {to_ru_date(planning_lock['date_to'])}"
@@ -1664,6 +1667,7 @@ def upsert_request_state(
         "override_systems": None,
         "actual_work_date": None,
         "actual_work_time": None,
+        "actual_work_comment": None,
         "corrected_at": None,
         "created_at": now,
         "updated_at": now,
@@ -1706,6 +1710,7 @@ def upsert_request_state(
             override_systems,
             actual_work_date,
             actual_work_time,
+            actual_work_comment,
             corrected_at,
             created_at,
             updated_at
@@ -1725,6 +1730,7 @@ def upsert_request_state(
             :override_systems,
             :actual_work_date,
             :actual_work_time,
+            :actual_work_comment,
             :corrected_at,
             :created_at,
             :updated_at
@@ -1744,6 +1750,7 @@ def upsert_request_state(
             override_systems = excluded.override_systems,
             actual_work_date = excluded.actual_work_date,
             actual_work_time = excluded.actual_work_time,
+            actual_work_comment = excluded.actual_work_comment,
             corrected_at = excluded.corrected_at,
             created_at = excluded.created_at,
             updated_at = excluded.updated_at;
@@ -2444,12 +2451,13 @@ def admin_reissue_employee_token(request: Request, employee_key: str = Form(...)
 
 
 @app.post("/employee/request/actual")
-def employee_set_actual_time(
+async def employee_set_actual_time(
     request: Request,
     employee_key: str = Form(...),
     response_id: int = Form(...),
     actual_work_date: str = Form(""),
     actual_work_time: str = Form(...),
+    actual_work_comment: str = Form(""),
     admin_mode: int = Form(0),
 ) -> RedirectResponse:
     is_admin_mode = bool(admin_mode) and is_admin_or_superuser_request(request)
@@ -2473,7 +2481,11 @@ def employee_set_actual_time(
             admin_mode=is_admin_mode,
         )
 
+    submitted_fields = await request.form()
     with get_db_connection() as conn:
+        # Serialize the status/lock check with the write so a concurrent closure
+        # cannot be overwritten by a stale actual-time form.
+        conn.execute("BEGIN IMMEDIATE")
         identity = get_request_identity(conn, employee_key, response_id)
         if not identity:
             return build_employee_redirect(employee_key, "Заявка не найдена или недоступна", "error", admin_mode=is_admin_mode)
@@ -2482,8 +2494,14 @@ def employee_set_actual_time(
         current_status = existing.get("status") if existing else "active"
         if current_status not in VALID_STATUSES:
             current_status = "active"
-        allowed_statuses = {"in_progress", "in_fact", "completed"} if is_admin_mode else {"in_progress", "in_fact"}
-        if current_status not in allowed_statuses:
+        if current_status in {"completed", "cancelled"}:
+            return build_employee_redirect(
+                employee_key,
+                "Фактическое время и комментарий закрытой или отменённой заявки нельзя редактировать.",
+                "error",
+                admin_mode=is_admin_mode,
+            )
+        if current_status not in {"in_progress", "in_fact"}:
             return build_employee_redirect(
                 employee_key,
                 "Факт можно указать только по заявке, принятой в работу.",
@@ -2509,17 +2527,22 @@ def employee_set_actual_time(
                 admin_mode=False,
             )
 
+        updates = {
+            "status": "in_fact",
+            "returned_for_correction": 0,
+            "actual_work_date": effective_planned_date,
+            "actual_work_time": actual_interval.normalized,
+        }
+        # Older clients omit the field; only an explicitly submitted empty
+        # comment clears it. Unrelated updates also preserve the stored text.
+        if "actual_work_comment" in submitted_fields:
+            updates["actual_work_comment"] = actual_work_comment.strip()
         upsert_request_state(
             conn,
             request_uid=request_uid,
             response_id=response_id,
             full_name_key=full_name_key,
-            updates={
-                "status": "completed" if current_status == "completed" else "in_fact",
-                "returned_for_correction": 0,
-                "actual_work_date": effective_planned_date,
-                "actual_work_time": actual_interval.normalized,
-            },
+            updates=updates,
         )
         conn.commit()
 

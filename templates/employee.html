@@ -289,7 +289,7 @@
           <div class="card app-card action-card">
             <h4 style="margin-top:0;">Фактически отработанное время</h4>
             {% if req.status != 'cancelled' and req.can_edit_actual %}
-              <form action="/employee/request/actual" method="post">
+              <form action="/employee/request/actual" method="post" data-actual-form>
                 <input type="hidden" name="employee_key" value="{{ req.employee_key }}" />
                 <input type="hidden" name="response_id" value="{{ req.response_id }}" />
                 <input type="hidden" name="admin_mode" value="{{ 1 if admin_mode else 0 }}" />
@@ -310,7 +310,7 @@
                       <span class="time-range-separator" aria-hidden="true">—</span>
                       <label class="sr-only" for="actual-time-end-{{ req.response_id }}">Фактическое время окончания</label>
                       <input class="form-control" id="actual-time-end-{{ req.response_id }}" type="text" data-time-end data-time-part data-time-mask="true" placeholder="18:00" inputmode="numeric" autocomplete="off" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Фактическое время окончания" required />
-                      <input type="hidden" name="actual_work_time" data-time-range-value value="{{ req.actual_work_time or req.planned_work_time or '' }}" />
+                      <input type="hidden" name="actual_work_time" data-time-range-value value="{{ req.actual_work_time or '' }}" />
                       <div class="time-feedback" aria-live="polite">
                         <div class="time-duration" data-duration></div>
                         <div class="time-lunch-warning" data-lunch-warning></div>
@@ -318,12 +318,22 @@
                     </div>
                   </div>
                 </div>
+                <div class="field-card" style="margin-top:12px;">
+                  <label for="actual-comment-{{ req.response_id }}">Комментарий к фактическому времени</label>
+                  <textarea class="form-control" id="actual-comment-{{ req.response_id }}" name="actual_work_comment" rows="3" aria-describedby="actual-comment-hint-{{ req.response_id }}" {% if not req.actual_work_time %}readonly{% endif %}>{{ req.actual_work_comment }}</textarea>
+                  <div id="actual-comment-hint-{{ req.response_id }}" class="field-hint" data-actual-comment-hint>Укажите фактическое время, чтобы добавить комментарий.</div>
+                </div>
                 <div class="request-actions"><button class="btn btn-primary" type="submit">Сохранить фактическое время</button></div>
               </form>
             {% else %}
               <div class="meta"><strong>Дата:</strong> {{ req.actual_work_date_ru or req.planned_work_date_ru or '—' }}</div>
               <div class="meta"><strong>Время:</strong> {{ req.actual_work_time or '—' }}</div>
               {% if req.actual_lunch_warning %}<div class="time-lunch-warning" role="note">{{ req.actual_lunch_warning }}</div>{% endif %}
+              <div class="field-card" style="margin-top:12px;">
+                <label for="actual-comment-{{ req.response_id }}">Комментарий к фактическому времени</label>
+                <textarea class="form-control" id="actual-comment-{{ req.response_id }}" name="actual_work_comment" rows="3" readonly>{{ req.actual_work_comment }}</textarea>
+                <div class="field-hint">{% if req.status == 'completed' %}Заявка закрыта. Комментарий доступен только для просмотра.{% else %}Редактирование факта недоступно.{% endif %}</div>
+              </div>
               {% if req.status != 'cancelled' %}<p class="meta">Ввод фактического времени сейчас недоступен.</p>{% endif %}
             {% endif %}
           </div>
@@ -581,6 +591,21 @@
     document.querySelectorAll(".help-tooltip").forEach((tooltip) => {
       tooltip.addEventListener("mouseenter", () => alignTooltip(tooltip));
       tooltip.addEventListener("focus", () => alignTooltip(tooltip));
+    });
+
+    document.querySelectorAll('[data-actual-form]').forEach((form) => {
+      const time = form.elements.actual_work_time;
+      const comment = form.elements.actual_work_comment;
+      const hint = form.querySelector('[data-actual-comment-hint]');
+      const syncComment = () => {
+        const hasTime = Boolean(time.value);
+        comment.readOnly = !hasTime;
+        hint.textContent = hasTime
+          ? 'Необязательно. Сохраняется вместе с фактическим временем.'
+          : 'Укажите фактическое время, чтобы добавить комментарий.';
+      };
+      ['input', 'change'].forEach(event => form.addEventListener(event, syncComment));
+      syncComment();
     });
 
     const pageLevel = "{{ level }}";
