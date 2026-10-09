@@ -4,7 +4,7 @@
 {% block heading %}Заявки{% endblock %}
 {% block description %}Найдите нужные заявки, проверьте статус и выгрузите выбранный список.{% endblock %}
 {% block content %}
-<div class="card app-card">
+<div class="card app-card requests-panel">
     <div class="filters" aria-label="Фильтры заявок">
       <div class="filter-field">
         <label for="request-search">Сотрудник</label>
@@ -28,32 +28,32 @@
     </div>
     <p class="filter-result" id="request-filter-result" aria-live="polite"></p>
     <a class="btn btn-primary export-button" id="request-export" href="/admin/requests/export?{{ {'filter_name': filter_name, 'filter_status': filter_status, 'filter_date': filter_date}|urlencode }}">Выгрузить в Excel</a>
-    <div class="table-wrap" role="region" aria-label="Таблица заявок" tabindex="0">
-    <table class="table table-vcenter">
+    <div class="table-wrap requests-table-wrap" role="region" aria-label="Таблица заявок">
+    <table class="table table-vcenter requests-table" role="table">
       <thead>
         <tr>
-          <th>ФИО</th>
-          <th>Плановая дата</th>
-          <th>Время</th>
-          <th>Статус</th>
-          <th>Условия</th>
-          <th class="task-column">Задача</th>
-          <th>Факт</th>
-          <th>Закрытие</th>
-          <th>Действия</th>
+          <th scope="col">ФИО</th>
+          <th scope="col">Плановая дата</th>
+          <th scope="col">Время</th>
+          <th scope="col">Статус</th>
+          <th scope="col">Условия</th>
+          <th scope="col" class="task-column">Задача</th>
+          <th scope="col">Факт</th>
+          <th scope="col">Закрытие</th>
+          <th scope="col">Действия</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody role="rowgroup">
         {% for item in requests_data %}
-          <tr data-request-row data-name="{{ item.full_name|lower }}" data-status="{{ item.status }}" data-date="{{ item.planned_work_date or '' }}">
-            <td>{{ item.full_name }}</td>
-            <td>{{ item.planned_work_date_ru or '—' }}</td>
-            <td>{{ item.planned_work_time or '—' }}</td>
-            <td><span class="badge {{ item.status }}">{{ item.status_label }}</span></td>
-            <td>{{ item.payment_type or '—' }}</td>
-            <td class="task-cell">
+          <tr role="row" data-request-row data-name="{{ item.full_name|lower }}" data-status="{{ item.status }}" data-date="{{ item.planned_work_date or '' }}">
+            <td role="cell" data-label="ФИО" class="request-person-cell">{{ item.full_name }}</td>
+            <td role="cell" data-label="Плановая дата" class="request-date-cell">{{ item.planned_work_date_ru or '—' }}</td>
+            <td role="cell" data-label="Время" class="request-time-cell">{{ item.planned_work_time or '—' }}</td>
+            <td role="cell" data-label="Статус"><span class="badge {{ item.status }}">{{ item.status_label }}</span></td>
+            <td role="cell" data-label="Условия">{{ item.payment_type or '—' }}</td>
+            <td role="cell" data-label="Задача" class="task-cell">
               <div class="task-cell-content">
-                <span class="task-preview">{{ item.task_description or '—' }}</span>
+                <span class="task-preview" title="{{ item.task_description or '' }}">{{ item.task_description or '—' }}</span>
                 <button
                   type="button"
                   class="btn btn-outline-danger delete-request-button"
@@ -70,20 +70,20 @@
                 </button>
               </div>
             </td>
-            <td class="actual-work-cell">
+            <td role="cell" data-label="Факт" class="actual-work-cell">
               {% if item.actual_work_date or item.actual_work_time %}
                 {{ item.actual_work_date_ru or '—' }}<br />{{ item.actual_work_time or '' }}
               {% else %}
                 —
               {% endif %}
             </td>
-            <td>
+            <td role="cell" data-label="Закрытие">
               {% if item.planning_lock_label %}<div>Прием: {{ item.planning_lock_label }}</div>{% endif %}
               {% if item.actual_lock_label %}<div>Факт: {{ item.actual_lock_label }}</div>{% endif %}
               {% if item.lock_week_label %}<div>Legacy: {{ item.lock_week_label }}</div>{% endif %}
               {% if not item.planning_lock_label and not item.actual_lock_label and not item.lock_week_label %}—{% endif %}
             </td>
-            <td>
+            <td role="cell" data-label="Действия" class="request-actions-cell">
               <a href="/employee?admin_mode=1&employee_key={{ item.employee_key }}">Открыть кабинет</a>
               {% if item.allowed_statuses|length > 1 %}
               <form class="status-form" action="/admin/request/status" method="post" style="margin-top: 8px;">
