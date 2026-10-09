@@ -197,7 +197,7 @@ class TeamTests(unittest.TestCase):
         self.admin()
         data = (';'.join(d.HEADERS) + '\nНовый Сотрудник;new@example.org;').encode()
         preview = self.client.post('/admin/roster/preview', files={'file':('root.csv', data)})
-        self.assertIn('<td>Суперпользователь</td>', preview.text)
+        self.assertRegex(preview.text, r'<td\b[^>]*>Суперпользователь</td>')
         identifier = re.search(r'/admin/roster/([^/]+)/apply', preview.text)[1]
         self.client.post(f'/admin/roster/{identifier}/apply')
         with ui.get_db_connection() as conn:
