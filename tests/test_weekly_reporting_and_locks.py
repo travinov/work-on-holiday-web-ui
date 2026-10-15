@@ -576,6 +576,78 @@ class WeeklyReportingAndLocksTest(unittest.TestCase):
         self.assertEqual("Иванов Иван Иванович", report_df.iloc[0]["ФИО"])
         self.assertEqual("22.04.2026", report_df.iloc[0]["Плановая дата выхода"])
 
+    def test_planned_reports_count_actual_days_in_calendar_month(self) -> None:
+        reports = [
+            importlib.import_module("src.report_first_management"),
+            importlib.import_module("src.report_second_requests"),
+        ]
+        cases = [
+            ("2026-10-15", "2026-09-30", "2026-10-01", "2026-10-31", "2026-11-01"),
+            ("2026-04-30", "2026-03-31", "2026-04-01", "2026-04-30", "2026-05-01"),
+            ("2026-02-01", "2026-01-31", "2026-02-01", "2026-02-28", "2026-03-01"),
+            ("2028-02-15", "2028-01-31", "2028-02-01", "2028-02-29", "2028-03-01"),
+            ("2027-01-15", "2026-12-31", "2027-01-01", "2027-01-31", "2027-02-01"),
+            ("2026-12-15", "2026-11-30", "2026-12-01", "2026-12-31", "2027-01-01"),
+        ]
+        header = "Количество выходов за календарный месяц"
+        for index, (planned, before, first, last, after) in enumerate(cases):
+            db_path = Path(self.tmpdir.name) / f"calendar_month_{index}.sqlite3"
+            init_test_db(db_path)
+            insert_planned_request(
+                db_path, response_id=1, full_name="Тестовый Сотрудник",
+                full_name_key="employee", planned_date=planned,
+            )
+            with sqlite3.connect(db_path) as conn:
+                # The last day is recorded in both sources; it must count only once.
+                actuals = [
+                    ("employee", before, "09:00 - 18:00"),
+                    ("employee", first, "09:00 - 18:00"),
+                    ("employee", last, "09:00 - 18:00"),
+                    ("employee", after, "09:00 - 18:00"),
+                    ("employee", first[:8] + "10", None),
+                    ("another employee", first[:8] + "11", "09:00 - 18:00"),
+                ]
+                conn.executemany(
+                    """
+                    INSERT INTO survey_responses (
+                        response_id, full_name_key, request_type, actual_work_date, actual_work_time
+                    ) VALUES (?, ?, 'Указать отработанное время', ?, ?)
+                    """,
+                    [(i + 2, *actual) for i, actual in enumerate(actuals)],
+                )
+                conn.execute(
+                    """
+                    INSERT INTO app_request_state (
+                        request_uid, response_id, full_name_key, status,
+                        actual_work_date, actual_work_time, created_at, updated_at
+                    ) VALUES ('req:1', 1, 'employee', 'completed', ?, '09:00 - 18:00', ?, ?)
+                    """, (last, planned, planned),
+                )
+            for report in reports:
+                with self.subTest(report=report.__name__, planned=planned):
+                    anchor = web_ui.date.fromisoformat(planned)
+                    frame = report.build_report_dataframe(str(db_path), anchor, anchor)
+                    self.assertEqual(1, len(frame))
+                    self.assertEqual(2, frame.iloc[0][header])
+
+            # Moving the plan into the next month must also move the count's month.
+            with sqlite3.connect(db_path) as conn:
+                conn.execute(
+                    "UPDATE app_request_state SET override_planned_work_date = ? WHERE response_id = 1",
+                    (after,),
+                )
+            for report in reports:
+                with self.subTest(report=report.__name__, corrected=after):
+                    anchor = web_ui.date.fromisoformat(after)
+                    frame = report.build_report_dataframe(str(db_path), anchor, anchor)
+                    self.assertEqual(1, len(frame))
+                    self.assertEqual(1, frame.iloc[0][header])
+                    empty = report.build_report_dataframe(
+                        str(db_path), web_ui.date.fromisoformat(planned), web_ui.date.fromisoformat(planned),
+                    )
+                    self.assertTrue(empty.empty)
+                    self.assertIn(header, empty.columns)
+
     def test_planned_reports_include_requests_after_actual_time_is_entered(self) -> None:
         report_first_management = importlib.import_module("src.report_first_management")
         report_second_requests = importlib.import_module("src.report_second_requests")

@@ -112,8 +112,9 @@ def build_report_dataframe(
             SELECT COUNT(*)
             FROM actual_dates ac2
             WHERE ac2.full_name_key = c.full_name_key
-              AND ac2.actual_work_date BETWEEN date(c.planned_work_date, '-29 day') AND c.planned_work_date
-        ) AS exits_last_month,
+              AND ac2.actual_work_date >= date(c.planned_work_date, 'start of month')
+              AND ac2.actual_work_date < date(c.planned_work_date, 'start of month', '+1 month')
+        ) AS exits_calendar_month,
         c.exit_conditions,
         c.task_description,
         c.justification,
@@ -145,7 +146,7 @@ def build_report_dataframe(
         return pd.DataFrame(
             columns=[
                 "ФИО",
-                "Количество выходов за последний месяц",
+                "Количество выходов за календарный месяц",
                 "Условия выхода",
                 "Перечень задач",
                 "Обоснование привлечения",
@@ -157,14 +158,14 @@ def build_report_dataframe(
         )
 
     df["planned_work_date"] = pd.to_datetime(df["planned_work_date"], errors="coerce").dt.strftime("%d.%m.%Y")
-    df["exits_last_month"] = pd.to_numeric(df["exits_last_month"], errors="coerce").fillna(0).astype(int)
+    df["exits_calendar_month"] = pd.to_numeric(df["exits_calendar_month"], errors="coerce").fillna(0).astype(int)
     df["systems"] = df["systems"].apply(format_systems_value)
     df = apply_profile_validations(df)
 
     report_df = df.rename(
         columns={
             "full_name": "ФИО",
-            "exits_last_month": "Количество выходов за последний месяц",
+            "exits_calendar_month": "Количество выходов за календарный месяц",
             "exit_conditions": "Условия выхода",
             "task_description": "Перечень задач",
             "justification": "Обоснование привлечения",
@@ -177,7 +178,7 @@ def build_report_dataframe(
 
     columns = [
         "ФИО",
-        "Количество выходов за последний месяц",
+        "Количество выходов за календарный месяц",
         "Условия выхода",
         "Перечень задач",
         "Обоснование привлечения",
