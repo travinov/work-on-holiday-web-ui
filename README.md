@@ -189,7 +189,7 @@ ssh CI09479675-lnx-travinov@tsles-assai0001.esrt.sber.ru
 ZIP:
 
 ```text
-https://codeload.github.com/travinov/work-on-holiday-web-ui/zip/refs/tags/v2026.09.22-racing-green
+https://codeload.github.com/travinov/work-on-holiday-web-ui/zip/refs/tags/v2026.10.15-calendar-month-ui
 ```
 
 #### Отдельный экземпляр Production
