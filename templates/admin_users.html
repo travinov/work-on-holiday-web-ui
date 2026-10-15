@@ -6,27 +6,34 @@
 {% block content %}
 <div class="card app-card"><a href="/admin/roster">Импорт реестра сотрудников и руководителей →</a></div>
   <div class="card app-card">
-    <div class="table-wrap" role="region" aria-label="Таблица пользователей" tabindex="0">
-    <table class="table table-vcenter">
+    <div class="users-toolbar">
+      <label class="field" for="users-search">
+        Поиск по ФИО
+        <input class="form-control" id="users-search" type="search" placeholder="Фамилия, имя или отчество" autocomplete="off" spellcheck="false" aria-controls="users-table" />
+      </label>
+      <span class="muted" id="users-count" role="status" aria-live="polite">Показано {{ users|length }} из {{ users|length }}</span>
+    </div>
+    <div class="table-wrap responsive-table-wrap" role="region" aria-label="Таблица пользователей">
+    <table class="table table-vcenter responsive-table responsive-table-wide users-table" id="users-table" role="table">
       <thead>
         <tr>
-          <th>ФИО</th>
-          <th>Заявок</th>
-          <th>Статус</th>
-          <th>Администратор</th>
-          <th>Грейд 12+</th>
-          <th>Токен</th>
-          <th>Флаг "забыл"</th>
-          <th>Действия</th>
+          <th scope="col">ФИО</th>
+          <th scope="col">Заявок</th>
+          <th scope="col">Статус</th>
+          <th scope="col">Администратор</th>
+          <th scope="col">Грейд 12+</th>
+          <th scope="col">Токен</th>
+          <th scope="col">Флаг "забыл"</th>
+          <th scope="col">Действия</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody role="rowgroup">
         {% for user in users %}
-          <tr>
-            <td>{{ user.full_name }}<br>{{ user.work_email or "Почта не указана" }}{% if user.is_manager %}<br><span class="badge">Руководитель</span>{% endif %}{% if user.manager_name %}<br>Руководитель: {{ user.manager_name }}{% endif %}</td>
-            <td>{{ user.requests_count }}</td>
-            <td>
-              <form action="/admin/employee/status" method="post" class="action-row">
+          <tr role="row" data-table-row data-user-name="{{ user.full_name }}">
+            <td role="cell" data-label="ФИО" class="user-person-cell">{{ user.full_name }}<br>{{ user.work_email or "Почта не указана" }}{% if user.is_manager %}<br><span class="badge">Руководитель</span>{% endif %}{% if user.manager_name %}<br>Руководитель: {{ user.manager_name }}{% endif %}</td>
+            <td role="cell" data-label="Заявок" class="user-count-cell">{{ user.requests_count }}</td>
+            <td role="cell" data-label="Статус" class="user-status-cell">
+              <form action="/admin/employee/status" method="post" class="action-row user-status-form">
                 <input type="hidden" name="employee_key" value="{{ user.employee_key }}" />
                 <label class="sr-only" for="employee-status-{{ loop.index }}">Статус сотрудника {{ user.full_name }}</label>
                 <select class="form-select" id="employee-status-{{ loop.index }}" name="employee_status">
@@ -39,7 +46,7 @@
                 <button class="btn btn-primary" type="submit">Сохранить</button>
               </form>
             </td>
-            <td>
+            <td role="cell" data-label="Администратор" class="user-role-cell">
               <form action="/admin/employee/admin-role" method="post" class="action-row">
                 <input type="hidden" name="employee_key" value="{{ user.employee_key }}" />
                 <input type="hidden" name="is_admin" value="0" />
@@ -48,7 +55,7 @@
                 </label>
               </form>
             </td>
-            <td>
+            <td role="cell" data-label="Грейд 12+" class="user-grade-cell">
               <form action="/admin/employee/grade" method="post" class="action-row">
                 <input type="hidden" name="employee_key" value="{{ user.employee_key }}" />
                 <input type="hidden" name="grade_12_plus" value="0" />
@@ -58,24 +65,30 @@
                 </label>
               </form>
             </td>
-            <td>
-              <div>Выдан: {{ user.token_issued_at or 'Нет' }}</div>
-              <div>Перевыпуск: {{ user.token_reissued_at or '—' }}</div>
+            <td role="cell" data-label="Токен" class="user-token-cell">
+              <div>Выдан: {{ (user.token_issued_at or 'Нет')|replace('T', ' ') }}</div>
+              <div>Перевыпуск: {{ (user.token_reissued_at or '—')|replace('T', ' ') }}</div>
             </td>
-            <td>{% if user.forgot_requested_at %}<span class="badge">Да, {{ user.forgot_requested_at }}</span>{% else %}—{% endif %}</td>
-            <td>
-              <div class="action-row">
+            <td role="cell" data-label="Флаг «забыл»" class="user-forgot-cell">{% if user.forgot_requested_at %}<span class="badge">Да, {{ user.forgot_requested_at }}</span>{% else %}—{% endif %}</td>
+            <td role="cell" data-label="Действия" class="user-actions-cell">
+              <div class="action-row user-actions">
                 <a href="/employee?admin_mode=1&employee_key={{ user.employee_key }}">Открыть кабинет</a>
                 <form action="/admin/employee/reissue-token" method="post">
                   <input type="hidden" name="employee_key" value="{{ user.employee_key }}" />
-                  <button class="btn btn-primary" type="submit">Перевыпустить токен</button>
+                  <button class="btn btn-primary" type="submit" aria-label="Перевыпустить токен: {{ user.full_name }}">Перевыпустить токен</button>
                 </form>
               </div>
             </td>
           </tr>
         {% endfor %}
+        <tr id="users-empty" {% if users %}hidden{% endif %}>
+          <td colspan="8" class="empty-state">{% if users %}По этому ФИО пользователи не найдены.{% else %}Пользователей пока нет.{% endif %}</td>
+        </tr>
       </tbody>
     </table>
     </div>
   </div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ asset_url('js/admin-users.js') }}"></script>
 {% endblock %}

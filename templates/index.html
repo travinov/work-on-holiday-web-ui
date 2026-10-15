@@ -36,16 +36,16 @@
         <div class="meta" data-lock-preview aria-live="polite"></div>
       </form>
       {% if period_locks %}
-        <div class="table-wrap" role="region" aria-label="Закрытые периоды" tabindex="0">
-        <table class="table table-vcenter" style="margin-top: 12px;">
-          <thead><tr><th>Тип</th><th>Период</th><th>Кем</th><th>Действие</th></tr></thead>
-          <tbody>
+        <div class="table-wrap responsive-table-wrap" role="region" aria-label="Закрытые периоды">
+        <table class="table table-vcenter responsive-table" role="table">
+          <thead><tr><th scope="col">Тип</th><th scope="col">Период</th><th scope="col">Кем</th><th scope="col">Действие</th></tr></thead>
+          <tbody role="rowgroup">
             {% for lock in period_locks %}
-              <tr>
-                <td>{{ lock.lock_type_label }}</td>
-                <td>{{ lock.date_from_ru }} - {{ lock.date_to_ru }}</td>
-                <td>{{ lock.created_by }}</td>
-                <td>
+              <tr role="row" data-table-row>
+                <td role="cell" data-label="Тип">{{ lock.lock_type_label }}</td>
+                <td role="cell" data-label="Период">{{ lock.date_from_ru }} - {{ lock.date_to_ru }}</td>
+                <td role="cell" data-label="Кем">{{ lock.created_by }}</td>
+                <td role="cell" data-label="Действие">
                   {% if lock.lock_type == 'planning' %}
                     <form action="/admin/locks/release-planning" method="post">
                       <input type="hidden" name="lock_id" value="{{ lock.lock_id }}" />
@@ -80,17 +80,17 @@
 
   <div class="card app-card" style="margin-top: 16px;">
     <h3>Готовые файлы отчетов</h3>
-    <div class="table-wrap" role="region" aria-label="Готовые отчеты" tabindex="0">
-    <table class="table table-vcenter">
+    <div class="table-wrap responsive-table-wrap" role="region" aria-label="Готовые отчеты">
+    <table class="table table-vcenter responsive-table" role="table">
       <thead>
-        <tr><th>Файл</th><th>Изменен</th><th>Действие</th></tr>
+        <tr><th scope="col">Файл</th><th scope="col">Изменен</th><th scope="col">Действие</th></tr>
       </thead>
-      <tbody>
+      <tbody role="rowgroup">
         {% for item in reports %}
-          <tr>
-            <td>{{ item.name }}</td>
-            <td>{{ item.modified }}</td>
-            <td><a href="/download/{{ item.name }}">Скачать</a></td>
+          <tr role="row" data-table-row>
+            <td role="cell" data-label="Файл" class="full-cell">{{ item.name }}</td>
+            <td role="cell" data-label="Изменен">{{ item.modified }}</td>
+            <td role="cell" data-label="Действие"><a href="/download/{{ item.name }}">Скачать</a></td>
           </tr>
         {% else %}<tr><td colspan="3" class="empty-state">Готовых отчётов пока нет. Сформируйте отчёт за нужную неделю.</td></tr>{% endfor %}
       </tbody>
